@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx skills:*)",
+      "Bash(ASDF_NODEJS_VERSION=20.11.0 npx skills:*)",
+      "WebFetch(domain:skills.sh)",
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "Task",
+      "TodoWrite",
+      "NotebookEdit"
+    ],
+    "defaultMode": "bypassPermissions"
+  }
+}

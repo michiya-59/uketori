@@ -1,0 +1,62 @@
+source "https://rubygems.org"
+
+gem "rails", "~> 8.0.4"
+gem "pg", "~> 1.1"
+gem "puma", ">= 5.0"
+gem "bcrypt", "~> 3.1.7"
+gem "tzinfo-data", platforms: %i[windows jruby]
+
+# Database-backed adapters (Redis不要)
+gem "solid_cache"
+gem "solid_queue"
+
+# 認証・認可
+gem "jwt"
+gem "pundit"
+
+# API
+gem "rack-cors"
+gem "rack-attack"
+gem "active_model_serializers"
+gem "kaminari"
+
+# ファイルストレージ (S3互換: R2/MinIO)
+gem "aws-sdk-s3", require: false
+gem "image_processing", "~> 1.2"
+
+# AI
+gem "anthropic", require: false
+
+# メール
+gem "sendgrid-ruby", require: false
+
+# PDF生成
+gem "matrix"
+gem "prawn", require: false
+gem "prawn-table", require: false
+
+# UUID
+gem "uuid7"
+
+# Deploy
+gem "kamal", require: false
+gem "thruster", require: false
+gem "bootsnap", require: "bootsnap/setup"
+
+group :development, :test do
+  gem "debug", platforms: %i[mri windows], require: "debug/prelude"
+  gem "brakeman", require: false
+  gem "rubocop-rails-omakase", require: false
+
+  # テスト
+  gem "rspec-rails"
+  gem "factory_bot_rails"
+  gem "faker"
+  gem "shoulda-matchers"
+  gem "database_cleaner-active_record"
+  gem "webmock"
+end
+
+group :test do
+  gem "simplecov", require: false
+end

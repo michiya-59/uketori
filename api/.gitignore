@@ -1,0 +1,24 @@
+# Environment
+.env*
+!.env.example
+
+# Bundler
+/vendor/bundle
+
+# Rails
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+/storage/*
+!/storage/.keep
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Coverage
+/coverage/

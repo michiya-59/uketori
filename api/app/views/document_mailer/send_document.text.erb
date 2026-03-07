@@ -1,0 +1,34 @@
+<%= @customer.company_name %> 御中
+
+いつもお世話になっております。
+<%= @tenant.name %>でございます。
+
+<%= @doc_type_label %>（<%= @document.document_number %>）をお送りいたします。
+
+■ 帳票情報
+帳票番号: <%= @document.document_number %>
+発行日: <%= @document.issue_date&.strftime("%Y年%m月%d日") %>
+<% if @document.due_date.present? -%>
+支払期限: <%= @document.due_date.strftime("%Y年%m月%d日") %>
+<% end -%>
+合計金額: ¥<%= @document.total_amount.to_s.gsub(/(\d)(?=(\d{3})+(?!\d))/, '\1,') %>
+
+<% if @custom_body.present? -%>
+<%= @custom_body %>
+
+<% end -%>
+<% if @pdf_url.present? -%>
+PDFは以下のURLよりダウンロードいただけます。
+<%= @pdf_url %>
+
+<% end -%>
+ご不明点がございましたら、お気軽にお問い合わせください。
+
+--
+<%= @tenant.name %>
+<% if @tenant.phone.present? -%>
+TEL: <%= @tenant.phone %>
+<% end -%>
+<% if @tenant.email.present? -%>
+Email: <%= @tenant.email %>
+<% end -%>

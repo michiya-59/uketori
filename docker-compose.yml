@@ -1,0 +1,83 @@
+services:
+  # --- バックエンド ---
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    ports:
+      - "4100:3000"
+    volumes:
+      - ./api:/app
+      - api_bundle:/app/vendor/bundle
+    environment:
+      - DATABASE_URL=postgres://postgres:password@db:5432/uketori_development
+      - RAILS_ENV=development
+      - SOLID_QUEUE_IN_PUMA=true
+      - R2_ACCESS_KEY_ID=minioadmin
+      - R2_SECRET_ACCESS_KEY=minioadmin
+      - R2_ENDPOINT=http://minio:9000
+      - R2_BUCKET=uketori-dev
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - JWT_SECRET=dev-secret-key-change-in-production
+      - JWT_EXPIRATION=900
+      - JWT_REFRESH_EXPIRATION=604800
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - MAILER_FROM=noreply@uketori.local
+      - NTA_APP_ID=${NTA_APP_ID}
+      - CORS_ORIGINS=http://localhost:4101
+      - FRONTEND_URL=http://localhost:4101
+    depends_on:
+      db:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+
+  # --- フロントエンド ---
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    ports:
+      - "4101:3000"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4100
+      - WATCHPACK_POLLING=true
+
+  # --- データベース ---
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=uketori_development
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- S3互換ストレージ（R2の代替） ---
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+volumes:
+  pg_data:
+  api_bundle:
+  web_node_modules:
+  minio_data:

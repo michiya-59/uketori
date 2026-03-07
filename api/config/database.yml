@@ -1,0 +1,45 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  connect_timeout: 10
+
+development:
+  primary:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres://postgres:password@localhost:5432/uketori_development") %>
+  queue:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres://postgres:password@localhost:5432/uketori_development") %>
+    migrations_paths: db/queue_migrate
+  cache:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL", "postgres://postgres:password@localhost:5432/uketori_development") %>
+    migrations_paths: db/cache_migrate
+
+test:
+  primary:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL_TEST") { (ENV["DATABASE_URL"] || "postgres://postgres:password@localhost:5432/uketori_development").sub(/\/[^\/]+$/, "/uketori_test") } %>
+  queue:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL_TEST") { (ENV["DATABASE_URL"] || "postgres://postgres:password@localhost:5432/uketori_development").sub(/\/[^\/]+$/, "/uketori_test") } %>
+    migrations_paths: db/queue_migrate
+  cache:
+    <<: *default
+    url: <%= ENV.fetch("DATABASE_URL_TEST") { (ENV["DATABASE_URL"] || "postgres://postgres:password@localhost:5432/uketori_development").sub(/\/[^\/]+$/, "/uketori_test") } %>
+    migrations_paths: db/cache_migrate
+
+production:
+  primary:
+    <<: *default
+    url: <%= ENV["DATABASE_URL"] %>
+    prepared_statements: true
+  queue:
+    <<: *default
+    url: <%= ENV.fetch("QUEUE_DATABASE_URL") { ENV["DATABASE_URL"] } %>
+    migrations_paths: db/queue_migrate
+  cache:
+    <<: *default
+    url: <%= ENV.fetch("CACHE_DATABASE_URL") { ENV["DATABASE_URL"] } %>
+    migrations_paths: db/cache_migrate
