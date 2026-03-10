@@ -3,7 +3,7 @@
 require "rails_helper"
 
 RSpec.describe "Api::V1::Dunning", type: :request do
-  let!(:tenant) { create(:tenant) }
+  let!(:tenant) { create(:tenant, plan: "starter") }
   let!(:owner) { create(:user, :owner, tenant: tenant) }
   let!(:accountant) { create(:user, :accountant, tenant: tenant) }
   let!(:member) { create(:user, :member, tenant: tenant) }

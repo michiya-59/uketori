@@ -58,6 +58,7 @@ import {
 } from "@/components/ui/select";
 import { api, ApiClientError } from "@/lib/api-client";
 import type { DocumentType, DocumentStatus, DocumentItem } from "@/types/document";
+import type { Tenant, TenantPlan } from "@/types/tenant";
 
 /** 帳票詳細APIレスポンスの型 */
 interface DocumentDetail {
@@ -138,6 +139,14 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   bad_debt: "貸倒",
 };
 
+/** プラン別月間帳票上限 */
+const PLAN_DOCUMENT_LIMITS: Record<TenantPlan, number | null> = {
+  free: 5,
+  starter: 50,
+  standard: null,
+  professional: null,
+};
+
 /** 変換先オプション */
 const CONVERSION_OPTIONS: Record<string, { value: string; label: string }[]> = {
   estimate: [
@@ -173,6 +182,7 @@ export default function DocumentDetailPage() {
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertTarget, setConvertTarget] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [isLimitReached, setIsLimitReached] = useState(false);
 
   /** 帳票詳細を取得する */
   const loadDocument = useCallback(async () => {
@@ -195,6 +205,31 @@ export default function DocumentDetailPage() {
   useEffect(() => {
     loadDocument();
   }, [loadDocument]);
+
+  /** プラン制限を確認する */
+  useEffect(() => {
+    const checkLimit = async () => {
+      try {
+        const tenantRes = await api.get<{ tenant: Tenant }>("/api/v1/tenant");
+        const plan = tenantRes.tenant.plan;
+        const limit = PLAN_DOCUMENT_LIMITS[plan];
+        if (limit === null) return;
+
+        const now = new Date();
+        const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+        const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+        const docsRes = await api.get<{ meta: { total_count: number } }>("/api/v1/documents", {
+          "filter[issue_date_from]": from,
+          "filter[issue_date_to]": to,
+          per_page: 1,
+        });
+        setIsLimitReached(docsRes.meta.total_count >= limit);
+      } catch {
+        // ignore
+      }
+    };
+    checkLimit();
+  }, []);
 
   /** バージョン履歴を取得する */
   const loadVersions = async () => {
@@ -506,7 +541,7 @@ export default function DocumentDetailPage() {
             {conversionOptions && conversionOptions.length > 0 && (
               <Dialog open={convertOpen} onOpenChange={setConvertOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" disabled={isLimitReached}>
                     <ArrowRightLeft className="mr-1.5 size-3.5" />
                     変換
                   </Button>
@@ -556,7 +591,8 @@ export default function DocumentDetailPage() {
               variant="outline"
               size="sm"
               onClick={handleDuplicate}
-              disabled={actionLoading}
+              disabled={actionLoading || isLimitReached}
+              title={isLimitReached ? "月間帳票数の上限に達しています" : undefined}
             >
               <Copy className="mr-1.5 size-3.5" />
               複製

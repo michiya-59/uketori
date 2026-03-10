@@ -13,6 +13,7 @@ import {
   Plus,
   Trash2,
   GripVertical,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,8 +34,13 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { api, ApiClientError } from "@/lib/api-client";
+import {
+  ProductPickerDialog,
+  type ProductSelection,
+} from "@/components/documents/product-picker-dialog";
 import type { Customer } from "@/types/customer";
 import type { DocumentType } from "@/types/document";
+import type { Tenant, TenantPlan } from "@/types/tenant";
 
 /** 明細行のバリデーションスキーマ */
 const itemSchema = z.object({
@@ -99,11 +105,22 @@ interface CustomersResponse {
  * 帳票の種別選択、顧客選択、明細行入力を提供する
  * @returns 帳票新規作成ページ要素
  */
+/** プラン別月間帳票上限 */
+const PLAN_DOCUMENT_LIMITS: Record<TenantPlan, number | null> = {
+  free: 5,
+  starter: 50,
+  standard: null,
+  professional: null,
+};
+
 export default function NewDocumentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [isLimitReached, setIsLimitReached] = useState(false);
+  const [limitChecked, setLimitChecked] = useState(false);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
 
   const defaultType = (searchParams.get("type") ?? "estimate") as DocumentType;
 
@@ -160,6 +177,33 @@ export default function NewDocumentPage() {
   useEffect(() => {
     loadCustomers();
   }, [loadCustomers]);
+
+  /** プラン制限を確認する */
+  useEffect(() => {
+    const checkLimit = async () => {
+      try {
+        const tenantRes = await api.get<{ tenant: Tenant }>("/api/v1/tenant");
+        const plan = tenantRes.tenant.plan;
+        const limit = PLAN_DOCUMENT_LIMITS[plan];
+        if (limit === null) { setLimitChecked(true); return; }
+
+        const now = new Date();
+        const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+        const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+        const docsRes = await api.get<{ meta: { total_count: number } }>("/api/v1/documents", {
+          "filter[issue_date_from]": from,
+          "filter[issue_date_to]": to,
+          per_page: 1,
+        });
+        setIsLimitReached(docsRes.meta.total_count >= limit);
+      } catch {
+        // ignore
+      } finally {
+        setLimitChecked(true);
+      }
+    };
+    checkLimit();
+  }, []);
 
   /**
    * 小計を計算する
@@ -228,6 +272,22 @@ export default function NewDocumentPage() {
     });
   };
 
+  /**
+   * 品目マスタから選択して明細行を追加する
+   * @param product - 選択された品目データ
+   */
+  const addFromProduct = (product: ProductSelection) => {
+    append({
+      name: product.name,
+      quantity: 1,
+      unit_price: product.unit_price,
+      tax_rate: product.tax_rate,
+      tax_rate_type: product.tax_rate_type,
+      item_type: "normal",
+      sort_order: fields.length,
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -243,6 +303,18 @@ export default function NewDocumentPage() {
           </p>
         </div>
       </div>
+
+      {limitChecked && isLimitReached && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3">
+          <p className="text-sm font-medium text-red-800">
+            月間帳票数の上限に達しています。新規作成できません。
+          </p>
+          <p className="text-xs text-red-600 mt-1">
+            プランをアップグレードすると上限を増やせます。
+            <Link href="/settings/billing" className="underline ml-1">プラン設定へ</Link>
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <Card>
@@ -324,22 +396,26 @@ export default function NewDocumentPage() {
                   </p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label className="text-[15px]">支払期限</Label>
-                <Input
-                  type="date"
-                  {...register("due_date")}
-                  className="h-11 text-[15px]"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-[15px]">有効期限</Label>
-                <Input
-                  type="date"
-                  {...register("valid_until")}
-                  className="h-11 text-[15px]"
-                />
-              </div>
+              {["invoice", "purchase_order"].includes(watch("document_type")) && (
+                <div className="space-y-2">
+                  <Label className="text-[15px]">支払期限</Label>
+                  <Input
+                    type="date"
+                    {...register("due_date")}
+                    className="h-11 text-[15px]"
+                  />
+                </div>
+              )}
+              {watch("document_type") === "estimate" && (
+                <div className="space-y-2">
+                  <Label className="text-[15px]">有効期限</Label>
+                  <Input
+                    type="date"
+                    {...register("valid_until")}
+                    className="h-11 text-[15px]"
+                  />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -347,10 +423,21 @@ export default function NewDocumentPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">明細行</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={addItem}>
-              <Plus className="mr-1.5 size-4" />
-              行を追加
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setProductPickerOpen(true)}
+              >
+                <Package className="mr-1.5 size-4" />
+                品目から追加
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={addItem}>
+                <Plus className="mr-1.5 size-4" />
+                手入力で追加
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -369,162 +456,115 @@ export default function NewDocumentPage() {
                 const amount = Math.floor(qty * price);
 
                 return (
-                  <div key={field.id}>
-                    {/* PC用: 横一列グリッド */}
-                    <div className="hidden sm:grid grid-cols-[1fr_80px_120px_120px_120px_40px] gap-2 items-center">
-                      <Input
-                        {...register(`document_items_attributes.${index}.name`)}
-                        placeholder="品名"
-                        className="h-10 text-[15px]"
-                      />
-                      <Input
-                        type="number"
-                        step="0.01"
-                        {...register(
-                          `document_items_attributes.${index}.quantity`,
-                          { valueAsNumber: true }
-                        )}
-                        className="h-10 text-[15px] text-right"
-                      />
-                      <Input
-                        type="number"
-                        {...register(
-                          `document_items_attributes.${index}.unit_price`,
-                          { valueAsNumber: true }
-                        )}
-                        className="h-10 text-[15px] text-right"
-                      />
-                      <Select
-                        value={items?.[index]?.tax_rate_type ?? "standard"}
-                        onValueChange={(v) => {
-                          setValue(
-                            `document_items_attributes.${index}.tax_rate_type`,
-                            v as "standard" | "reduced" | "exempt"
-                          );
-                          const opt = TAX_RATE_OPTIONS.find(
-                            (o) => o.value === v
-                          );
-                          if (opt) {
-                            setValue(
-                              `document_items_attributes.${index}.tax_rate`,
-                              opt.rate
-                            );
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="h-10">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TAX_RATE_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-right tabular-nums text-[15px] font-medium">
-                        ¥{amount.toLocaleString()}
-                      </p>
+                  <div key={field.id} className="rounded-md border p-3 sm:border-0 sm:p-0">
+                    {/* SP用: 明細番号ヘッダー */}
+                    <div className="flex items-center justify-between sm:hidden mb-3">
+                      <span className="text-xs font-medium text-muted-foreground">明細 {index + 1}</span>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="size-8"
+                        className="size-7"
                         onClick={() => remove(index)}
                         disabled={fields.length <= 1}
                       >
-                        <Trash2 className="size-4 text-muted-foreground" />
+                        <Trash2 className="size-3.5 text-muted-foreground" />
                       </Button>
                     </div>
 
-                    {/* SP用: カード型スタックレイアウト */}
-                    <div className="sm:hidden rounded-md border p-3 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">明細 {index + 1}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => remove(index)}
-                          disabled={fields.length <= 1}
-                        >
-                          <Trash2 className="size-3.5 text-muted-foreground" />
-                        </Button>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">品名</Label>
+                    {/* レスポンシブグリッド: SP=2列, PC=6列 */}
+                    <div className="grid grid-cols-2 sm:grid-cols-[1fr_80px_120px_120px_120px_40px] gap-3 sm:gap-2 items-end sm:items-center">
+                      {/* 品名 (SP: 2列幅, PC: 1列) */}
+                      <div className="col-span-2 sm:col-span-1 space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">品名</Label>
                         <Input
                           {...register(`document_items_attributes.${index}.name`)}
                           placeholder="品名"
                           className="h-10 text-[15px]"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">数量</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            {...register(
-                              `document_items_attributes.${index}.quantity`,
-                              { valueAsNumber: true }
-                            )}
-                            className="h-10 text-[15px] text-right"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">単価</Label>
-                          <Input
-                            type="number"
-                            {...register(
-                              `document_items_attributes.${index}.unit_price`,
-                              { valueAsNumber: true }
-                            )}
-                            className="h-10 text-[15px] text-right"
-                          />
-                        </div>
+
+                      {/* 数量 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">数量</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          {...register(
+                            `document_items_attributes.${index}.quantity`,
+                            { valueAsNumber: true }
+                          )}
+                          className="h-10 text-[15px] text-right"
+                        />
                       </div>
-                      <div className="grid grid-cols-2 gap-3 items-end">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">税率</Label>
-                          <Select
-                            value={items?.[index]?.tax_rate_type ?? "standard"}
-                            onValueChange={(v) => {
+
+                      {/* 単価 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">単価</Label>
+                        <Input
+                          type="number"
+                          {...register(
+                            `document_items_attributes.${index}.unit_price`,
+                            { valueAsNumber: true }
+                          )}
+                          className="h-10 text-[15px] text-right"
+                        />
+                      </div>
+
+                      {/* 税率 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">税率</Label>
+                        <Select
+                          value={items?.[index]?.tax_rate_type ?? "standard"}
+                          onValueChange={(v) => {
+                            setValue(
+                              `document_items_attributes.${index}.tax_rate_type`,
+                              v as "standard" | "reduced" | "exempt"
+                            );
+                            const opt = TAX_RATE_OPTIONS.find(
+                              (o) => o.value === v
+                            );
+                            if (opt) {
                               setValue(
-                                `document_items_attributes.${index}.tax_rate_type`,
-                                v as "standard" | "reduced" | "exempt"
+                                `document_items_attributes.${index}.tax_rate`,
+                                opt.rate
                               );
-                              const opt = TAX_RATE_OPTIONS.find(
-                                (o) => o.value === v
-                              );
-                              if (opt) {
-                                setValue(
-                                  `document_items_attributes.${index}.tax_rate`,
-                                  opt.rate
-                                );
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="h-10">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TAX_RATE_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="text-right">
-                          <Label className="text-xs text-muted-foreground">金額</Label>
-                          <p className="tabular-nums text-[15px] font-medium mt-1.5">
-                            ¥{amount.toLocaleString()}
-                          </p>
-                        </div>
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TAX_RATE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* 金額 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">金額</Label>
+                        <p className="text-right tabular-nums text-[15px] font-medium h-10 flex items-center justify-end">
+                          ¥{amount.toLocaleString()}
+                        </p>
+                      </div>
+
+                      {/* PC用: 削除ボタン */}
+                      <div className="hidden sm:flex justify-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          onClick={() => remove(index)}
+                          disabled={fields.length <= 1}
+                        >
+                          <Trash2 className="size-4 text-muted-foreground" />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -593,13 +633,19 @@ export default function NewDocumentPage() {
           <Button variant="outline" type="button" asChild>
             <Link href="/documents">キャンセル</Link>
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting || isLimitReached}>
             {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
             <Save className="mr-2 size-4" />
             作成する
           </Button>
         </div>
       </form>
+
+      <ProductPickerDialog
+        open={productPickerOpen}
+        onOpenChange={setProductPickerOpen}
+        onSelect={addFromProduct}
+      />
     </div>
   );
 }

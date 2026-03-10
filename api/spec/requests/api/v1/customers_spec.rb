@@ -104,7 +104,7 @@ RSpec.describe "Api::V1::Customers", type: :request do
 
   describe "POST /api/v1/customers" do
     let!(:valid_params) do
-      { customer: { company_name: "新規取引先", customer_type: "client", email: "new@example.com" } }
+      { customer: { company_name: "新規取引先", company_name_kana: "シンキトリヒキサキ", customer_type: "client", email: "new@example.com" } }
     end
 
     context "sales以上のロールの場合" do

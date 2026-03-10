@@ -1,0 +1,17 @@
+プランアップグレードのお問い合わせがありました。
+
+■ テナント情報
+- テナント名: <%= @tenant.name %>
+- 現在のプラン: <%= @tenant.plan %>
+- テナントUUID: <%= @tenant.uuid %>
+
+■ お問い合わせ者
+- 名前: <%= @user.name %>
+- メール: <%= @user.email %>
+- ロール: <%= @user.role %>
+
+■ 希望プラン
+<%= @desired_plan %>
+
+■ お問い合わせ内容
+<%= @message %>

@@ -15,6 +15,8 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  ShieldCheck,
+  MessageSquarePlus,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -152,6 +154,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [importEnabled, setImportEnabled] = useState(false);
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false);
 
   /**
    * テナント情報を取得し機能フラグを設定する
@@ -165,9 +168,22 @@ export function AppSidebar() {
     }
   }, []);
 
+  /**
+   * システム管理者かどうかを確認する
+   */
+  const checkAdmin = useCallback(async () => {
+    try {
+      await api.get<{ admin: boolean }>("/api/v1/admin/me");
+      setIsSystemAdmin(true);
+    } catch {
+      // 管理者でない場合は403が返る
+    }
+  }, []);
+
   useEffect(() => {
     fetchFeatureFlags();
-  }, [fetchFeatureFlags]);
+    checkAdmin();
+  }, [fetchFeatureFlags, checkAdmin]);
 
   /**
    * ログアウト処理を実行しログインページへ遷移する
@@ -199,10 +215,30 @@ export function AppSidebar() {
         <NavGroup items={MAIN_NAV} label="概要" pathname={pathname} />
         <NavGroup items={WORK_NAV} label="業務" pathname={pathname} />
         <NavGroup items={toolNav} label="ツール" pathname={pathname} />
+        {isSystemAdmin && (
+          <NavGroup
+            items={[{ label: "システム管理", href: "/admin", icon: ShieldCheck }]}
+            label="管理者"
+            pathname={pathname}
+          />
+        )}
       </SidebarContent>
       <SidebarFooter className="px-3 py-3">
         <Separator className="mb-3" />
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={isActiveItem(pathname, "/contact")}
+              tooltip="お問い合わせ"
+              className="h-10 text-[15px]"
+            >
+              <Link href="/contact" onClick={() => { }}>
+                <MessageSquarePlus className="size-[18px]" />
+                <span>お問い合わせ</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               className="h-10 text-[15px] text-muted-foreground hover:text-destructive"

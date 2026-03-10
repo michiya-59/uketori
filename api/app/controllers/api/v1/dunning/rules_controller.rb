@@ -35,6 +35,7 @@ module Api
         # @return [void]
         def create
           authorize DunningRule
+          PlanLimitChecker.new(current_tenant).check!(:auto_dunning)
           rule = DunningRule.new(rule_params.merge(tenant: current_tenant))
           rule.save!
 

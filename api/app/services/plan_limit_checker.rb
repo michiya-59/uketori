@@ -105,7 +105,7 @@ class PlanLimitChecker
       @tenant.users.active.count
     when :documents_monthly
       @tenant.documents.active
-             .where(created_at: Time.current.beginning_of_month..Time.current.end_of_month)
+             .where(issue_date: Date.current.beginning_of_month..Date.current.end_of_month)
              .count
     when :customers
       @tenant.customers.active.count

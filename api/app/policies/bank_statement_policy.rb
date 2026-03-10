@@ -19,6 +19,13 @@ class BankStatementPolicy < ApplicationPolicy
     accountant_or_above?
   end
 
+  # OCRプレビュー: accountant以上
+  #
+  # @return [Boolean]
+  def ocr_preview?
+    accountant_or_above?
+  end
+
   # 未マッチ一覧: 全ロール許可
   #
   # @return [Boolean]

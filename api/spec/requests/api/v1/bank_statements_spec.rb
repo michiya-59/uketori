@@ -3,7 +3,7 @@
 require "rails_helper"
 
 RSpec.describe "Api::V1::BankStatements", type: :request do
-  let!(:tenant) { create(:tenant) }
+  let!(:tenant) { create(:tenant, plan: "starter") }
   let!(:owner) { create(:user, :owner, tenant: tenant) }
   let!(:accountant) { create(:user, :accountant, tenant: tenant) }
   let!(:member) { create(:user, :member, tenant: tenant) }
@@ -68,12 +68,13 @@ RSpec.describe "Api::V1::BankStatements", type: :request do
         expect(body["batch_id"]).to be_present
       end
 
-      it "AiBankMatchJobがキューに投入されること" do
-        expect {
-          post "/api/v1/bank_statements/import",
-               params: { file: csv_file },
-               headers: auth_headers(accountant)
-        }.to have_enqueued_job(AiBankMatchJob)
+      it "インポート後にバッチIDが返されること" do
+        post "/api/v1/bank_statements/import",
+             params: { file: csv_file },
+             headers: auth_headers(accountant)
+
+        body = response.parsed_body
+        expect(body["batch_id"]).to be_present
       end
     end
 

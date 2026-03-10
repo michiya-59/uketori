@@ -74,7 +74,17 @@ module Api
         authorize @document
         return unless ensure_not_locked!
 
-        @document.update!(document_params)
+        attrs = document_params.except(:customer_id, :project_id)
+
+        # UUID → ID の解決
+        if document_params[:customer_id].present?
+          @document.customer = policy_scope(Customer).find_by_uuid!(document_params[:customer_id])
+        end
+        if document_params[:project_id].present?
+          @document.project = policy_scope(Project).find_by_uuid!(document_params[:project_id])
+        end
+
+        @document.update!(attrs)
         @document.document_items.reload
         DocumentCalculator.call(@document)
         create_version(@document, "更新")
@@ -101,6 +111,7 @@ module Api
       # @return [void]
       def duplicate
         authorize @document
+        PlanLimitChecker.new(current_tenant).check!(:documents_monthly)
         dup = duplicate_document(@document)
         AuditLogger.log(user: current_user, action: "create", resource: dup, changes: { source: @document.uuid })
 
@@ -112,6 +123,7 @@ module Api
       # @return [void]
       def convert
         authorize @document
+        PlanLimitChecker.new(current_tenant).check!(:documents_monthly)
         target_type = params[:target_type]
 
         converted = DocumentConverter.call(

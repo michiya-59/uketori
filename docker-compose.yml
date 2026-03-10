@@ -26,6 +26,7 @@ services:
       - NTA_APP_ID=${NTA_APP_ID}
       - CORS_ORIGINS=http://localhost:4101
       - FRONTEND_URL=http://localhost:4101
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +63,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # --- メール確認UI ---
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
   # --- S3互換ストレージ（R2の代替） ---
   minio:

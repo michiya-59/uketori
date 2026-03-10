@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -26,12 +26,19 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiClientError } from "@/lib/api-client";
+import { useKatakanaAutoFill } from "@/hooks/use-katakana";
 import type { Customer } from "@/types/customer";
+
+/** カタカナのみ（全角カタカナ・長音符・全角スペース・半角スペース） */
+const katakanaRegex = /^[ァ-ヶー　\s]+$/;
 
 /** 顧客フォームのバリデーションスキーマ */
 const customerSchema = z.object({
   company_name: z.string().min(1, "会社名を入力してください"),
-  company_name_kana: z.string().optional(),
+  company_name_kana: z
+    .string()
+    .min(1, "フリガナを入力してください")
+    .regex(katakanaRegex, "カタカナで入力してください"),
   customer_type: z.enum(["client", "vendor", "both"]),
   department: z.string().optional(),
   title: z.string().optional(),
@@ -94,8 +101,19 @@ export default function EditCustomerPage() {
     defaultValues: {
       customer_type: "client",
       payment_terms_days: 30,
+      company_name_kana: "",
     },
   });
+
+  /** データ読み込み完了フラグ（初回ロード時にAPI呼び出しを防ぐ） */
+  const initialLoaded = useRef(false);
+
+  const companyName = watch("company_name");
+  const kanaManuallyEdited = useKatakanaAutoFill(
+    companyName,
+    setValue,
+    initialLoaded.current
+  );
 
   /**
    * 既存の顧客データを読み込みフォームにセットする
@@ -133,6 +151,10 @@ export default function EditCustomerPage() {
       router.push("/customers");
     } finally {
       setLoading(false);
+      // 初回ロード完了後にフラグを立てる（ロード時のwatch変更でAPI呼び出しを防ぐ）
+      setTimeout(() => {
+        initialLoaded.current = true;
+      }, 100);
     }
   }, [uuid, router, reset]);
 
@@ -207,12 +229,23 @@ export default function EditCustomerPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label className="text-[15px]">フリガナ</Label>
+                <Label className="text-[15px]">
+                  フリガナ <span className="text-destructive">*</span>
+                </Label>
                 <Input
-                  {...register("company_name_kana")}
+                  {...register("company_name_kana", {
+                    onChange: () => {
+                      kanaManuallyEdited.current = true;
+                    },
+                  })}
                   className="h-11 text-[15px]"
                   placeholder="カブシキガイシャウケトリ"
                 />
+                {errors.company_name_kana && (
+                  <p className="text-sm text-destructive">
+                    {errors.company_name_kana.message}
+                  </p>
+                )}
               </div>
             </div>
 

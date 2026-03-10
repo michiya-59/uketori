@@ -30,6 +30,7 @@ Rails.application.routes.draw do
         get :documents, on: :member
         get :credit_history, on: :member
         post :verify_invoice_number, on: :member
+        post :katakana, on: :collection
         resources :contacts, controller: "customer_contacts", only: %i[index create update destroy]
       end
 
@@ -63,6 +64,7 @@ Rails.application.routes.draw do
       # 銀行明細
       resources :bank_statements, only: %i[index] do
         post :import, on: :collection
+        post :ocr_preview, on: :collection
         get :unmatched, on: :collection
         post :match, on: :member
         post :ai_match, on: :collection
@@ -92,11 +94,21 @@ Rails.application.routes.draw do
         get :error_csv, on: :member
       end
 
+      # お問い合わせ
+      post "contact", to: "contacts#create"
+      post "contact/plan_inquiry", to: "contacts#plan_inquiry"
+
       # 通知
       resources :notifications, only: %i[index update]
 
       # ダッシュボード
       get "dashboard", to: "dashboard#show"
+
+      # システム管理者
+      namespace :admin do
+        get "me", to: "me#show"
+        resources :tenants, only: %i[index show update]
+      end
     end
   end
 end

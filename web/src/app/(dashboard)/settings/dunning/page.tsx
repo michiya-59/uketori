@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Pencil,
@@ -43,6 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { api, ApiClientError } from "@/lib/api-client";
+import { Tenant } from "@/types/tenant";
 import type { DunningRule } from "@/types/dunning";
 
 /** ルール一覧レスポンス */
@@ -90,8 +92,19 @@ const DEFAULT_BODY = `{{customer_name}} 御中
  * 督促ルールの作成・編集・削除を行う
  */
 export default function DunningSettingsPage() {
+  const router = useRouter();
   const [rules, setRules] = useState<DunningRule[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // プラン制限
+  const [tenantPlan, setTenantPlan] = useState<string | null>(null);
+  const isFreePlan = tenantPlan === "free";
+
+  useEffect(() => {
+    api.get<{ tenant: Tenant }>("/api/v1/tenant")
+      .then((data) => setTenantPlan(data.tenant.plan))
+      .catch(() => {});
+  }, []);
 
   // フォームダイアログ
   const [formOpen, setFormOpen] = useState(false);
@@ -243,20 +256,37 @@ export default function DunningSettingsPage() {
     <div className="space-y-4 sm:space-y-6">
       {/* ヘッダー */}
       <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" asChild className="mt-1 shrink-0 size-10 sm:size-9">
-          <Link href="/dunning">
-            <ArrowLeft className="size-5 sm:size-4" />
-          </Link>
+        <Button variant="ghost" size="icon" className="mt-1 shrink-0 size-10 sm:size-9" onClick={() => router.back()}>
+          <ArrowLeft className="size-5 sm:size-4" />
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">督促ルール設定</h1>
           <p className="text-sm text-muted-foreground">
             督促の条件、テンプレート、送信先を設定します
           </p>
-          <Button size="sm" className="mt-2" onClick={openCreate}>
-            <Plus className="mr-1.5 size-3.5" />
-            ルール追加
-          </Button>
+          {isFreePlan ? (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                Freeプランでは自動督促機能をご利用いただけません
+              </p>
+              <p className="mt-1 text-xs text-red-600 dark:text-red-500">
+                Starter プラン以上にアップグレードすると、督促ルールの作成・自動実行が利用できます。
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                asChild
+              >
+                <Link href="/settings/billing">プランを確認する</Link>
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" className="mt-2" onClick={openCreate}>
+              <Plus className="mr-1.5 size-3.5" />
+              ルール追加
+            </Button>
+          )}
         </div>
       </div>
 

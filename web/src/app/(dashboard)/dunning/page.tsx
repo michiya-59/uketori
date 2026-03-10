@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { api, ApiClientError } from "@/lib/api-client";
+import { Tenant } from "@/types/tenant";
 import type { DunningRule, DunningLog } from "@/types/dunning";
 
 /** 督促ルール一覧レスポンス */
@@ -104,6 +105,16 @@ export default function DunningPage() {
   const [loadingRules, setLoadingRules] = useState(true);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [logPage, setLogPage] = useState(1);
+
+  // プラン制限
+  const [tenantPlan, setTenantPlan] = useState<string | null>(null);
+  const isFreePlan = tenantPlan === "free";
+
+  useEffect(() => {
+    api.get<{ tenant: Tenant }>("/api/v1/tenant")
+      .then((data) => setTenantPlan(data.tenant.plan))
+      .catch(() => {});
+  }, []);
 
   // 手動実行
   const [executeOpen, setExecuteOpen] = useState(false);
@@ -192,12 +203,32 @@ export default function DunningPage() {
               ルール設定
             </Link>
           </Button>
-          <Button size="sm" onClick={() => setExecuteOpen(true)}>
+          <Button size="sm" onClick={() => setExecuteOpen(true)} disabled={isFreePlan}>
             <Play className="mr-1.5 size-3.5" />
             手動実行
           </Button>
         </div>
       </div>
+
+      {/* フリープラン制限 */}
+      {isFreePlan && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
+          <p className="text-sm font-medium text-red-700 dark:text-red-400">
+            Freeプランでは自動督促機能をご利用いただけません
+          </p>
+          <p className="mt-1 text-xs text-red-600 dark:text-red-500">
+            Starter プラン以上にアップグレードすると、督促ルールの作成・自動実行が利用できます。
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+            asChild
+          >
+            <Link href="/settings/billing">プランを確認する</Link>
+          </Button>
+        </div>
+      )}
 
       {/* タブ */}
       <Tabs defaultValue="rules">

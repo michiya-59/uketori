@@ -174,7 +174,8 @@ class AuthService
           tenant: tenant,
           name: product_data["name"],
           unit: product_data["unit"],
-          tax_rate_type: product_data["tax_rate_type"] || "standard"
+          tax_rate_type: product_data["tax_rate_type"] || "standard",
+          is_default: true
         )
       end
     end

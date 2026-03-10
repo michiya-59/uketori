@@ -1,0 +1,28 @@
+お問い合わせがありました。
+
+■ カテゴリ: <%= @category_label %>
+■ 優先度: <%= @priority_label %>
+■ 件名: <%= @subject %>
+
+■ テナント情報
+- テナント名: <%= @tenant.name %>
+- プラン: <%= @tenant.plan %>
+- テナントUUID: <%= @tenant.uuid %>
+
+■ お問い合わせ者
+- 名前: <%= @user.name %>
+- メール: <%= @user.email %>
+- ロール: <%= @user.role %>
+
+■ お問い合わせ内容
+<%= @body %>
+<% if @page_url.present? %>
+
+■ 問い合わせ元ページ
+<%= @page_url %>
+<% end %>
+<% if @user_agent.present? %>
+
+■ ブラウザ情報
+<%= @user_agent %>
+<% end %>

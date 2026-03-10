@@ -20,7 +20,11 @@ module Api
       # @return [void]
       def update
         authorize current_tenant, policy_class: TenantPolicy
-        current_tenant.update!(tenant_params) if params[:tenant].present?
+        if params[:tenant].present?
+          old_industry = current_tenant.industry_type
+          current_tenant.update!(tenant_params)
+          sync_default_products_if_industry_changed(old_industry)
+        end
         render json: { tenant: serialize_tenant(current_tenant) }
       end
 
@@ -47,6 +51,50 @@ module Api
           # 督促
           :dunning_enabled
         )
+      end
+
+      # 業種変更時にデフォルト品目を入れ替える
+      #
+      # 既存のデフォルト品目（unit_priceが未設定かつユーザーが編集していないもの）を削除し、
+      # 新しい業種テンプレートのデフォルト品目を追加する。
+      # ユーザーが独自に追加・編集した品目は残す。
+      #
+      # @param old_industry [String, nil] 変更前の業種コード
+      # @return [void]
+      def sync_default_products_if_industry_changed(old_industry)
+        new_industry = current_tenant.industry_type
+        return if old_industry == new_industry
+
+        old_template = IndustryTemplate.find_by(code: old_industry)
+        new_template = IndustryTemplate.find_by(code: new_industry)
+        return unless new_template
+
+        # 旧テンプレートのデフォルト品名一覧
+        old_default_names = (old_template&.default_products || []).map { |p| p["name"] }
+
+        # 旧テンプレート由来のデフォルト品目を削除（帳票で使用中のものは残す）
+        used_product_ids = DocumentItem.where(
+          product_id: current_tenant.products.select(:id)
+        ).pluck(:product_id).uniq
+
+        current_tenant.products
+                      .where(is_default: true)
+                      .where.not(id: used_product_ids)
+                      .destroy_all
+
+        # 新テンプレートのデフォルト品目を追加（同名が既に存在しない場合のみ）
+        existing_names = current_tenant.products.pluck(:name)
+        (new_template.default_products || []).each do |product_data|
+          next if existing_names.include?(product_data["name"])
+
+          Product.create!(
+            tenant: current_tenant,
+            name: product_data["name"],
+            unit: product_data["unit"],
+            tax_rate_type: product_data["tax_rate_type"] || "standard",
+            is_default: true
+          )
+        end
       end
 
       # @param tenant [Tenant]

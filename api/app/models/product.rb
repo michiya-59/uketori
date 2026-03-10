@@ -31,4 +31,11 @@ class Product < ApplicationRecord
   #   表示順で並べるスコープ
   #   @return [ActiveRecord::Relation] sort_order昇順のレコード
   scope :ordered, -> { order(:sort_order) }
+
+  # デフォルト品目かどうかを判定する
+  #
+  # @return [Boolean] デフォルト品目の場合true
+  def default?
+    is_default
+  end
 end

@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/dialog";
 import { api, ApiClientError } from "@/lib/api-client";
 import type { DocumentType, DocumentStatus, PaymentStatus } from "@/types/document";
+import type { Tenant, TenantPlan } from "@/types/tenant";
 
 /** 帳票一覧の個別アイテム型 */
 interface DocumentSummary {
@@ -117,6 +118,14 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   bad_debt: "貸倒",
 };
 
+/** プラン別月間帳票上限 */
+const PLAN_DOCUMENT_LIMITS: Record<TenantPlan, number | null> = {
+  free: 5,
+  starter: 50,
+  standard: null,
+  professional: null,
+};
+
 /** 帳票タブ */
 const DOC_TABS = [
   { value: "all", label: "すべて" },
@@ -144,6 +153,8 @@ export default function DocumentsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [tenantPlan, setTenantPlan] = useState<TenantPlan>("free");
+  const [monthlyCount, setMonthlyCount] = useState(0);
 
   /**
    * 帳票一覧を取得する
@@ -172,6 +183,39 @@ export default function DocumentsPage() {
     },
     [activeTab, statusFilter]
   );
+
+  /** テナント情報とプラン制限を取得する */
+  useEffect(() => {
+    const loadTenant = async () => {
+      try {
+        const res = await api.get<{ tenant: Tenant }>("/api/v1/tenant");
+        setTenantPlan(res.tenant.plan);
+      } catch {
+        // ignore
+      }
+    };
+    loadTenant();
+  }, []);
+
+  /** 月間帳票数を取得する（フィルタなしの全件数） */
+  useEffect(() => {
+    const loadMonthlyCount = async () => {
+      try {
+        const now = new Date();
+        const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+        const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, "0")}`;
+        const res = await api.get<DocumentsResponse>("/api/v1/documents", {
+          "filter[issue_date_from]": from,
+          "filter[issue_date_to]": to,
+          per_page: 1,
+        });
+        setMonthlyCount(res.meta.total_count);
+      } catch {
+        // ignore
+      }
+    };
+    loadMonthlyCount();
+  }, []);
 
   useEffect(() => {
     loadDocuments(1);
@@ -236,13 +280,33 @@ export default function DocumentsPage() {
     }
   };
 
+  const docLimit = PLAN_DOCUMENT_LIMITS[tenantPlan];
+  const isLimitReached = docLimit !== null && monthlyCount >= docLimit;
+
   return (
     <div className="space-y-6">
+      {isLimitReached && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3">
+          <p className="text-sm font-medium text-red-800">
+            月間帳票数の上限（{docLimit}件）に達しています。新規作成・複製・変換はできません。
+          </p>
+          <p className="text-xs text-red-600 mt-1">
+            プランをアップグレードすると上限を増やせます。
+            <Link href="/settings/billing" className="underline ml-1">プラン設定へ</Link>
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">帳票管理</h1>
           <p className="mt-1 text-muted-foreground">
             見積書・請求書等の作成・管理を行います
+            {docLimit !== null && (
+              <span className="ml-2 text-xs">
+                （今月 {monthlyCount}/{docLimit}件）
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -255,12 +319,19 @@ export default function DocumentsPage() {
               {selectedIds.size}件を削除
             </Button>
           )}
-          <Button asChild>
-            <Link href="/documents/new">
+          {isLimitReached ? (
+            <Button disabled>
               <Plus className="mr-2 size-4" />
               新規作成
-            </Link>
-          </Button>
+            </Button>
+          ) : (
+            <Button asChild>
+              <Link href="/documents/new">
+                <Plus className="mr-2 size-4" />
+                新規作成
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 

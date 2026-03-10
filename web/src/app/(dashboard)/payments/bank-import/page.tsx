@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Upload,
@@ -9,7 +9,15 @@ import {
   XCircle,
   ChevronLeft,
   FileSpreadsheet,
+  Image,
+  FileText,
   Loader2,
+  Eye,
+  Pencil,
+  Trash2,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldQuestion,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,15 +39,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { api, ApiClientError } from "@/lib/api-client";
+import { Tenant } from "@/types/tenant";
 import Link from "next/link";
 
 /** インポート結果の型 */
@@ -72,15 +74,38 @@ interface UnmatchedStatement {
   suggestion?: Suggestion | null;
 }
 
+/** 自動マッチ詳細 */
+interface AutoMatchDetail {
+  payer_name: string;
+  amount: number;
+  transaction_date: string;
+  document_number: string;
+  customer_name: string | null;
+  confidence: number;
+}
+
 /** AIマッチング結果の型 */
 interface MatchResults {
   auto_matched: number;
   needs_review: number;
   unmatched: number;
+  auto_matched_details: AutoMatchDetail[];
 }
 
-/** ステップの定義 */
-type Step = "upload" | "matching" | "review";
+/** OCR抽出行の型 */
+interface OcrRow {
+  date: string;
+  description: string;
+  amount: string;
+  confidence: "high" | "medium" | "low";
+  warning: string | null;
+}
+
+/** ステップの定義（OCR確認ステップ追加） */
+type Step = "upload" | "ocr_loading" | "ocr_confirm" | "matching" | "review";
+
+/** ステップの順序 */
+const STEP_ORDER: Step[] = ["upload", "ocr_loading", "ocr_confirm", "matching", "review"];
 
 /**
  * 金額を3桁カンマ区切りでフォーマットする
@@ -104,12 +129,12 @@ function confidenceVariant(confidence: number): "default" | "secondary" | "destr
 
 /**
  * 銀行明細取込ページ
- * CSV取込 → AIマッチング → 結果確認のステップで銀行明細をインポートする
+ * ファイル取込 → [OCR確認] → AIマッチング → 結果確認のステップで銀行明細をインポートする
  */
 export default function BankImportPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("upload");
-  const [bankFormat, setBankFormat] = useState("generic");
+  const [bankFormat, setBankFormat] = useState("auto");
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -117,9 +142,50 @@ export default function BankImportPage() {
   const [unmatchedStatements, setUnmatchedStatements] = useState<UnmatchedStatement[]>([]);
   const [loadingReview, setLoadingReview] = useState(false);
 
-  // 手動マッチダイアログ
-  const [matchTarget, setMatchTarget] = useState<UnmatchedStatement | null>(null);
+  // プラン制限
+  const [tenantPlan, setTenantPlan] = useState<string | null>(null);
+  const isFreePlan = tenantPlan === "free";
+
+  useEffect(() => {
+    api.get<{ tenant: Tenant }>("/api/v1/tenant")
+      .then((data) => setTenantPlan(data.tenant.plan))
+      .catch(() => {});
+  }, []);
+
+  // OCR確認ステート
+  const [ocrRows, setOcrRows] = useState<OcrRow[]>([]);
+  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<{ date: string; description: string; amount: string }>({
+    date: "",
+    description: "",
+    amount: "",
+  });
+
+  // 手動マッチ
   const [matchingManual, setMatchingManual] = useState(false);
+
+  /** 対応ファイル拡張子 */
+  const ACCEPTED_EXTENSIONS = [".csv", ".pdf", ".jpg", ".jpeg", ".png", ".webp"];
+
+  /**
+   * ファイルが対応形式か判定する
+   * @param f - チェック対象のファイル
+   * @returns 対応形式ならtrue
+   */
+  const isAcceptedFile = (f: File): boolean => {
+    const ext = f.name.toLowerCase().slice(f.name.lastIndexOf("."));
+    return ACCEPTED_EXTENSIONS.includes(ext);
+  };
+
+  /**
+   * ファイルがOCR対象（画像/PDF）か判定する
+   * @param f - チェック対象のファイル
+   * @returns OCR対象ならtrue
+   */
+  const isOcrFile = (f: File): boolean => {
+    const ext = f.name.toLowerCase().slice(f.name.lastIndexOf("."));
+    return [".pdf", ".jpg", ".jpeg", ".png", ".webp"].includes(ext);
+  };
 
   /**
    * ファイルドロップハンドラー
@@ -127,10 +193,10 @@ export default function BankImportPage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && (droppedFile.name.endsWith(".csv") || droppedFile.name.endsWith(".CSV"))) {
+    if (droppedFile && isAcceptedFile(droppedFile)) {
       setFile(droppedFile);
     } else {
-      toast.error("CSVファイルを選択してください");
+      toast.error("CSV・PDF・画像ファイル（JPG/PNG）を選択してください");
     }
   }, []);
 
@@ -143,34 +209,83 @@ export default function BankImportPage() {
   }, []);
 
   /**
-   * インポート実行
+   * 取込開始 — CSVは直接インポート、画像/PDFはOCRプレビューへ
    */
-  const handleImport = async () => {
+  const handleStartImport = async () => {
     if (!file) return;
+
+    if (isOcrFile(file)) {
+      // OCRプレビューフロー
+      setStep("ocr_loading");
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const result = await api.upload<{ rows: OcrRow[]; warnings_count: number }>(
+          "/api/v1/bank_statements/ocr_preview",
+          formData
+        );
+        setOcrRows(result.rows);
+        setStep("ocr_confirm");
+        if (result.warnings_count > 0) {
+          toast.warning(`${result.warnings_count}件の読み取りに注意が必要です。確認してください。`);
+        } else {
+          toast.success(`${result.rows.length}件の明細を読み取りました。内容を確認してください。`);
+        }
+      } catch (e) {
+        if (e instanceof ApiClientError) {
+          toast.error(e.body?.error?.message || "AI読み取りに失敗しました");
+        }
+        setStep("upload");
+      }
+    } else {
+      // CSV直接インポート
+      await doImport();
+    }
+  };
+
+  /**
+   * CSVインポートまたは確認済みOCRデータのインポート実行
+   */
+  const doImport = async (confirmedRows?: OcrRow[]) => {
     setImporting(true);
     setStep("matching");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("bank_format", bankFormat);
+      let result: ImportResult;
 
-      const result = await api.upload<ImportResult>("/api/v1/bank_statements/import", formData);
+      if (confirmedRows) {
+        // OCR確認済みデータ
+        result = await api.post<ImportResult>("/api/v1/bank_statements/import", {
+          confirmed_rows: confirmedRows.map((r) => ({
+            date: r.date,
+            description: r.description,
+            amount: r.amount,
+          })),
+          bank_format: bankFormat,
+        });
+      } else if (file) {
+        // CSVファイル
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("bank_format", bankFormat);
+        result = await api.upload<ImportResult>("/api/v1/bank_statements/import", formData);
+      } else {
+        return;
+      }
+
       setImportResult(result);
+      if (result.imported > 0) {
+        toast.success(`${result.imported}件の明細をインポートしました`);
+      } else {
+        toast.info(`新規明細は0件でした（${result.skipped}件は取込済み）`);
+      }
 
-      // AIマッチングを待つ（少し待ってから結果を取得）
-      toast.success(`${result.imported}件の明細をインポートしました`);
-
-      // AIマッチング結果をポーリング
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const matchRes = await api.post<MatchResults>("/api/v1/bank_statements/ai_match", {
-        batch_id: result.batch_id,
-      });
+      // AIマッチング（全未マッチ対象）
+      const matchRes = await api.post<MatchResults>("/api/v1/bank_statements/ai_match", {});
       setMatchResults(matchRes);
       setStep("review");
-
-      // 未消込明細を取得
-      await loadUnmatched();
+      // 常にバッチIDで絞り込み（今回のインポート分のみ表示）
+      await loadUnmatched(result.batch_id);
     } catch (e) {
       if (e instanceof ApiClientError) {
         toast.error(e.body?.error?.message || "インポートに失敗しました");
@@ -182,14 +297,59 @@ export default function BankImportPage() {
   };
 
   /**
-   * 未消込明細を読み込む
+   * OCR確認済みデータでインポート実行
    */
-  const loadUnmatched = async () => {
+  const handleConfirmOcr = () => {
+    if (ocrRows.length === 0) {
+      toast.error("インポートする明細がありません");
+      return;
+    }
+    doImport(ocrRows);
+  };
+
+  /**
+   * OCR行の編集を開始する
+   * @param index - 行インデックス
+   */
+  const startEditing = (index: number) => {
+    const row = ocrRows[index];
+    if (!row) return;
+    setEditingRowIndex(index);
+    setEditForm({ date: row.date, description: row.description, amount: row.amount });
+  };
+
+  /**
+   * OCR行の編集を確定する
+   */
+  const saveEditing = () => {
+    if (editingRowIndex === null) return;
+    setOcrRows((prev) =>
+      prev.map((row, i) =>
+        i === editingRowIndex
+          ? { ...row, date: editForm.date, description: editForm.description, amount: editForm.amount, confidence: "high" as const, warning: null }
+          : row
+      )
+    );
+    setEditingRowIndex(null);
+  };
+
+  /**
+   * OCR行を削除する
+   * @param index - 行インデックス
+   */
+  const removeOcrRow = (index: number) => {
+    setOcrRows((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  /**
+   * 未消込明細を読み込む（現在のインポートバッチのみ）
+   */
+  const loadUnmatched = async (batchId?: string) => {
     setLoadingReview(true);
     try {
-      const data = await api.get<{ bank_statements: UnmatchedStatement[] }>("/api/v1/bank_statements/unmatched", {
-        per_page: "100",
-      });
+      const params: Record<string, string> = { per_page: "100" };
+      if (batchId) params.batch_id = batchId;
+      const data = await api.get<{ bank_statements: UnmatchedStatement[] }>("/api/v1/bank_statements/unmatched", params);
       setUnmatchedStatements(data.bank_statements);
     } catch {
       toast.error("未消込明細の取得に失敗しました");
@@ -219,6 +379,41 @@ export default function BankImportPage() {
     }
   };
 
+  /**
+   * ステップ比較用ヘルパー
+   */
+  const stepIndex = (s: Step) => STEP_ORDER.indexOf(s);
+
+  /**
+   * 信頼度アイコンを返す
+   */
+  const confidenceIcon = (confidence: string) => {
+    switch (confidence) {
+      case "high":
+        return <ShieldCheck className="size-4 text-green-500" />;
+      case "medium":
+        return <ShieldQuestion className="size-4 text-amber-500" />;
+      case "low":
+        return <ShieldAlert className="size-4 text-red-500" />;
+      default:
+        return null;
+    }
+  };
+
+  /** ステップインジケーター用定義 */
+  const stepIndicators = file && isOcrFile(file)
+    ? [
+        { key: "upload" as Step, label: "明細取込", icon: Upload },
+        { key: "ocr_confirm" as Step, label: "読取確認", icon: Eye },
+        { key: "matching" as Step, label: "AI消込中", icon: Loader2 },
+        { key: "review" as Step, label: "結果確認", icon: CheckCircle2 },
+      ]
+    : [
+        { key: "upload" as Step, label: "明細取込", icon: Upload },
+        { key: "matching" as Step, label: "AI消込中", icon: Loader2 },
+        { key: "review" as Step, label: "結果確認", icon: CheckCircle2 },
+      ];
+
   return (
     <div className="space-y-6">
       {/* ヘッダー */}
@@ -231,52 +426,72 @@ export default function BankImportPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">銀行明細取込</h1>
           <p className="text-sm text-muted-foreground">
-            CSVファイルから銀行明細を取り込み、AIで自動消込を行います
+            CSV・写真・PDFから銀行明細を取り込み、AIで自動消込を行います
           </p>
         </div>
       </div>
 
       {/* ステップインジケーター */}
-      <div className="flex items-center gap-4">
-        {[
-          { key: "upload", label: "1. CSV取込", icon: Upload },
-          { key: "matching", label: "2. AI消込中", icon: Loader2 },
-          { key: "review", label: "3. 結果確認", icon: CheckCircle2 },
-        ].map(({ key, label, icon: Icon }) => (
-          <div
-            key={key}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${
-              step === key
-                ? "bg-primary text-primary-foreground"
-                : step > key
-                ? "bg-muted text-muted-foreground"
-                : "text-muted-foreground"
-            }`}
-          >
-            <Icon className={`size-4 ${step === "matching" && key === "matching" ? "animate-spin" : ""}`} />
-            {label}
-          </div>
-        ))}
+      <div className={`grid gap-3 sm:gap-4 ${stepIndicators.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}>
+        {stepIndicators.map(({ key, label, icon: Icon }, index) => {
+          const isActive = step === key || (key === "ocr_confirm" && step === "ocr_loading");
+          const isPast = stepIndex(step) > stepIndex(key);
+          return (
+            <div
+              key={key}
+              className={`flex items-center justify-center gap-1.5 sm:gap-2 rounded-lg px-2 py-2.5 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : isPast
+                  ? "bg-muted text-muted-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <Icon className={`size-3.5 sm:size-4 shrink-0 ${(step === "matching" && key === "matching") || (step === "ocr_loading" && key === "ocr_confirm") ? "animate-spin" : ""}`} />
+              <span>{index + 1}. {label}</span>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Step 1: CSV取込 */}
+      {/* Step 1: 明細取込 */}
       {step === "upload" && (
         <Card>
           <CardHeader>
-            <CardTitle>CSVファイルを取込</CardTitle>
+            <CardTitle>明細ファイルを取込</CardTitle>
             <CardDescription>
-              銀行からダウンロードした取引明細CSVをドラッグ＆ドロップまたは選択してください
+              銀行の取引明細をドラッグ＆ドロップまたは選択してください。CSV・PDF・写真（JPG/PNG）に対応しています。
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* フリープラン制限 */}
+            {isFreePlan && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
+                <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                  Freeプランでは銀行明細取込・AI消込をご利用いただけません
+                </p>
+                <p className="mt-1 text-xs text-red-600 dark:text-red-500">
+                  Starter プラン以上にアップグレードすると、CSV・写真・PDFからの明細取込とAI自動消込が利用できます。
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                  asChild
+                >
+                  <Link href="/settings/billing">プランを確認する</Link>
+                </Button>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium">銀行フォーマット</label>
-              <Select value={bankFormat} onValueChange={setBankFormat}>
+              <Select value={bankFormat} onValueChange={setBankFormat} disabled={isFreePlan}>
                 <SelectTrigger className="w-[250px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="generic">汎用（自動判定）</SelectItem>
+                  <SelectItem value="auto">自動判定</SelectItem>
                   <SelectItem value="mufg">三菱UFJ銀行</SelectItem>
                   <SelectItem value="smbc">三井住友銀行</SelectItem>
                   <SelectItem value="mizuho">みずほ銀行</SelectItem>
@@ -286,19 +501,36 @@ export default function BankImportPage() {
             </div>
 
             <div
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
+              onDrop={isFreePlan ? undefined : handleDrop}
+              onDragOver={isFreePlan ? undefined : (e) => e.preventDefault()}
               className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 transition-colors ${
-                file ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                isFreePlan
+                  ? "border-muted-foreground/15 bg-muted/50 opacity-60 cursor-not-allowed"
+                  : file
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25 hover:border-muted-foreground/50"
               }`}
             >
-              {file ? (
+              {file && !isFreePlan ? (
                 <>
-                  <FileSpreadsheet className="mb-3 size-10 text-primary" />
+                  {isOcrFile(file) ? (
+                    file.name.toLowerCase().endsWith(".pdf") ? (
+                      <FileText className="mb-3 size-10 text-primary" />
+                    ) : (
+                      <Image className="mb-3 size-10 text-primary" />
+                    )
+                  ) : (
+                    <FileSpreadsheet className="mb-3 size-10 text-primary" />
+                  )}
                   <p className="text-sm font-medium">{file.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {(file.size / 1024).toFixed(1)} KB
                   </p>
+                  {isOcrFile(file) && (
+                    <Badge variant="secondary" className="mt-2">
+                      AI読み取り（OCR） — ダブルパス検証
+                    </Badge>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -312,19 +544,23 @@ export default function BankImportPage() {
                 <>
                   <Upload className="mb-3 size-10 text-muted-foreground/50" />
                   <p className="text-sm text-muted-foreground">
-                    CSVファイルをドラッグ＆ドロップ
+                    ファイルをドラッグ＆ドロップ
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground/70">
+                    CSV・PDF・写真（JPG / PNG）
                   </p>
                   <p className="text-xs text-muted-foreground/50">
                     または
                   </p>
-                  <label className="mt-2 cursor-pointer">
+                  <label className={`mt-2 ${isFreePlan ? "cursor-not-allowed" : "cursor-pointer"}`}>
                     <input
                       type="file"
-                      accept=".csv"
+                      accept=".csv,.pdf,.jpg,.jpeg,.png,.webp"
                       className="hidden"
                       onChange={handleFileSelect}
+                      disabled={isFreePlan}
                     />
-                    <span className="text-sm text-primary hover:underline">
+                    <span className={`text-sm ${isFreePlan ? "text-muted-foreground" : "text-primary hover:underline"}`}>
                       ファイルを選択
                     </span>
                   </label>
@@ -333,15 +569,210 @@ export default function BankImportPage() {
             </div>
 
             <div className="flex justify-end">
-              <Button onClick={handleImport} disabled={!file || importing}>
-                {importing ? "取込中..." : "取込を開始"}
+              <Button onClick={handleStartImport} disabled={!file || importing || isFreePlan}>
+                {file && isOcrFile(file) ? "AI読み取りを開始" : "取込を開始"}
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Step 2: AIマッチング中 */}
+      {/* OCR読み取り中 */}
+      {step === "ocr_loading" && (
+        <Card>
+          <CardContent className="flex flex-col items-center py-12">
+            <Loader2 className="mb-4 size-12 animate-spin text-primary" />
+            <p className="text-lg font-medium">AI読み取り中...</p>
+            <p className="text-sm text-muted-foreground">
+              画像・PDFから明細データを抽出しています（ダブルパス検証）
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground/70">
+              正確性のため2回読み取って結果を突合しています
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* OCR確認・修正ステップ */}
+      {step === "ocr_confirm" && (
+        <div className="space-y-4">
+          {/* サマリー */}
+          <div className="grid gap-3 sm:gap-4 grid-cols-3">
+            <Card>
+              <CardContent className="flex items-center gap-3 pt-5 pb-4">
+                <ShieldCheck className="size-8 text-green-500 shrink-0" />
+                <div>
+                  <p className="text-xl font-bold">{ocrRows.filter((r) => r.confidence === "high").length}</p>
+                  <p className="text-xs text-muted-foreground">読取OK</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-3 pt-5 pb-4">
+                <ShieldQuestion className="size-8 text-amber-500 shrink-0" />
+                <div>
+                  <p className="text-xl font-bold">{ocrRows.filter((r) => r.confidence === "medium").length}</p>
+                  <p className="text-xs text-muted-foreground">読取あいまい</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-3 pt-5 pb-4">
+                <ShieldAlert className="size-8 text-red-500 shrink-0" />
+                <div>
+                  <p className="text-xl font-bold">{ocrRows.filter((r) => r.confidence === "low").length}</p>
+                  <p className="text-xs text-muted-foreground">読取不正確</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>読み取り結果の確認</CardTitle>
+              <CardDescription>
+                AIが2回読み取った結果を突合しました。ここでは読み取り精度のみ表示しています（請求書との照合は次のステップで行います）。赤・黄色の行は特に注意して確認・修正してください。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {ocrRows.length === 0 ? (
+                <div className="flex flex-col items-center py-12 text-muted-foreground">
+                  <AlertCircle className="mb-2 size-8 opacity-50" />
+                  <p>明細データが抽出されませんでした</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">読取</TableHead>
+                        <TableHead>取引日</TableHead>
+                        <TableHead>摘要</TableHead>
+                        <TableHead className="text-right">金額</TableHead>
+                        <TableHead className="w-24">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ocrRows.map((row, idx) => (
+                        <TableRow
+                          key={idx}
+                          className={
+                            row.confidence === "low"
+                              ? "bg-red-50 dark:bg-red-950/20"
+                              : row.confidence === "medium"
+                              ? "bg-amber-50 dark:bg-amber-950/20"
+                              : ""
+                          }
+                        >
+                          {editingRowIndex === idx ? (
+                            <>
+                              <TableCell>{confidenceIcon(row.confidence)}</TableCell>
+                              <TableCell>
+                                <Input
+                                  value={editForm.date}
+                                  onChange={(e) => setEditForm((p) => ({ ...p, date: e.target.value }))}
+                                  className="h-8 w-32"
+                                  placeholder="YYYY/MM/DD"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  value={editForm.description}
+                                  onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+                                  className="h-8"
+                                />
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Input
+                                  value={editForm.amount}
+                                  onChange={(e) => setEditForm((p) => ({ ...p, amount: e.target.value }))}
+                                  className="h-8 w-28 text-right"
+                                  placeholder="金額"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <Button size="sm" onClick={saveEditing}>
+                                    保存
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setEditingRowIndex(null)}>
+                                    取消
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </>
+                          ) : (
+                            <>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  {confidenceIcon(row.confidence)}
+                                </div>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">{row.date}</TableCell>
+                              <TableCell>
+                                <div>
+                                  <span>{row.description}</span>
+                                  {row.warning && (
+                                    <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
+                                      ⚠ {row.warning}
+                                    </p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium whitespace-nowrap">
+                                ¥{Number(row.amount).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => startEditing(idx)}
+                                    title="編集"
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => removeOcrRow(idx)}
+                                    title="削除"
+                                    className="text-red-500 hover:text-red-700"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="flex items-center justify-between">
+            <Button variant="outline" onClick={() => { setStep("upload"); setOcrRows([]); }}>
+              やり直す
+            </Button>
+            <div className="flex items-center gap-3">
+              {ocrRows.some((r) => r.confidence === "low") && (
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  ⚠ 要確認の行があります
+                </p>
+              )}
+              <Button onClick={handleConfirmOcr} disabled={ocrRows.length === 0}>
+                確認完了 — {ocrRows.length}件をインポート
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AIマッチング中 */}
       {step === "matching" && (
         <Card>
           <CardContent className="flex flex-col items-center py-12">
@@ -354,10 +785,9 @@ export default function BankImportPage() {
         </Card>
       )}
 
-      {/* Step 3: 結果確認 */}
+      {/* 結果確認 */}
       {step === "review" && (
         <div className="space-y-6">
-          {/* サマリーカード */}
           {matchResults && (
             <div className="grid gap-4 md:grid-cols-3">
               <Card>
@@ -390,25 +820,65 @@ export default function BankImportPage() {
             </div>
           )}
 
-          {/* 未消込明細テーブル */}
-          <Card>
-            <CardHeader>
-              <CardTitle>要確認・未マッチ明細</CardTitle>
-              <CardDescription>
-                AI提案を確認して消込を確定、またはスキップしてください
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingReview ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="size-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : unmatchedStatements.length === 0 ? (
-                <div className="flex flex-col items-center py-12 text-muted-foreground">
-                  <CheckCircle2 className="mb-2 size-8 opacity-50" />
-                  <p>すべての明細が消込済みです</p>
-                </div>
-              ) : (
+          {/* 自動マッチ結果 */}
+          {matchResults && matchResults.auto_matched_details && matchResults.auto_matched_details.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="size-5 text-green-500" />
+                  自動消込済み
+                </CardTitle>
+                <CardDescription>
+                  AIが高い確度で自動的に消込した明細です
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>取引日</TableHead>
+                      <TableHead>振込名</TableHead>
+                      <TableHead className="text-right">金額</TableHead>
+                      <TableHead>マッチした請求書</TableHead>
+                      <TableHead>信頼度</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {matchResults.auto_matched_details.map((detail, i) => (
+                      <TableRow key={i} className="bg-green-50/50">
+                        <TableCell className="whitespace-nowrap">{detail.transaction_date}</TableCell>
+                        <TableCell>{detail.payer_name}</TableCell>
+                        <TableCell className="text-right font-medium">{formatAmount(detail.amount)}</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-medium">{detail.document_number}</p>
+                            <p className="text-xs text-muted-foreground">{detail.customer_name}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="default">{Math.round(detail.confidence * 100)}%</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 要確認・未マッチ明細 */}
+          {unmatchedStatements.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="size-5 text-amber-500" />
+                  要確認・未マッチ明細
+                </CardTitle>
+                <CardDescription>
+                  AI提案がある場合は確認して消込を確定できます
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -417,7 +887,7 @@ export default function BankImportPage() {
                       <TableHead className="text-right">金額</TableHead>
                       <TableHead>AI提案</TableHead>
                       <TableHead>信頼度</TableHead>
-                      <TableHead className="w-[150px]">操作</TableHead>
+                      <TableHead className="w-[100px]">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -456,36 +926,34 @@ export default function BankImportPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
-                            {stmt.suggestion && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleConfirmMatch(stmt)}
-                                disabled={matchingManual}
-                              >
-                                確定
-                              </Button>
-                            )}
+                          {stmt.suggestion && (
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setUnmatchedStatements((prev) => prev.filter((s) => s.id !== stmt.id));
-                              }}
+                              onClick={() => handleConfirmMatch(stmt)}
+                              disabled={matchingManual}
                             >
-                              スキップ
+                              確定
                             </Button>
-                          </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* 完了ボタン */}
+          {/* すべて消込済み */}
+          {!loadingReview && unmatchedStatements.length === 0 && (!matchResults?.auto_matched_details?.length) && (
+            <Card>
+              <CardContent className="flex flex-col items-center py-12 text-muted-foreground">
+                <CheckCircle2 className="mb-2 size-8 opacity-50" />
+                <p>すべての明細が消込済みです</p>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex justify-end">
             <Button onClick={() => router.push("/payments")}>
               入金一覧に戻る

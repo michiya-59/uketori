@@ -27,6 +27,9 @@ class Customer < ApplicationRecord
   TYPES = %w[client vendor both].freeze
 
   validates :company_name, presence: true, length: { maximum: 255 }
+  validates :company_name_kana, format: { with: /\A[ァ-ヶー　\s]+\z/, message: "カタカナで入力してください" },
+                                length: { maximum: 255 },
+                                allow_blank: true
   validates :customer_type, inclusion: { in: TYPES }
   validates :credit_score, numericality: { in: 0..100 }, allow_nil: true
 

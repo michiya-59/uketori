@@ -4,6 +4,7 @@ FactoryBot.define do
   factory :customer do
     tenant
     company_name { "株式会社テスト取引先" }
+    company_name_kana { "カブシキガイシャテストトリヒキサキ" }
     customer_type { "client" }
 
     trait :vendor do

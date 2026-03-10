@@ -24,14 +24,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { api, ApiClientError } from "@/lib/api-client";
+import { useKatakanaAutoFill } from "@/hooks/use-katakana";
 import type { Customer } from "@/types/customer";
+
+/** カタカナのみ（全角カタカナ・長音符・全角スペース・半角スペース） */
+const katakanaRegex = /^[ァ-ヶー　\s]+$/;
 
 /** 顧客フォームのバリデーションスキーマ */
 const customerSchema = z.object({
   company_name: z.string().min(1, "会社名を入力してください"),
-  company_name_kana: z.string().optional(),
+  company_name_kana: z
+    .string()
+    .min(1, "フリガナを入力してください")
+    .regex(katakanaRegex, "カタカナで入力してください"),
   customer_type: z.enum(["client", "vendor", "both"]),
   department: z.string().optional(),
   title: z.string().optional(),
@@ -84,8 +90,12 @@ export default function NewCustomerPage() {
     defaultValues: {
       customer_type: "client",
       payment_terms_days: 30,
+      company_name_kana: "",
     },
   });
+
+  const companyName = watch("company_name");
+  const kanaManuallyEdited = useKatakanaAutoFill(companyName, setValue);
 
   /**
    * フォームの送信を処理する
@@ -144,12 +154,23 @@ export default function NewCustomerPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label className="text-[15px]">フリガナ</Label>
+                <Label className="text-[15px]">
+                  フリガナ <span className="text-destructive">*</span>
+                </Label>
                 <Input
-                  {...register("company_name_kana")}
+                  {...register("company_name_kana", {
+                    onChange: () => {
+                      kanaManuallyEdited.current = true;
+                    },
+                  })}
                   className="h-11 text-[15px]"
                   placeholder="カブシキガイシャウケトリ"
                 />
+                {errors.company_name_kana && (
+                  <p className="text-sm text-destructive">
+                    {errors.company_name_kana.message}
+                  </p>
+                )}
               </div>
             </div>
 

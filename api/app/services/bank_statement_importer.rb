@@ -16,12 +16,17 @@ class BankStatementImporter
   class ImportError < StandardError; end
 
   # 対応する銀行フォーマットのパーサー定義
+  #
+  # 三菱UFJ: 日付(0), 摘要(1), 摘要内容(2), 支払い金額(3), 預かり金額(4), 差引残高(5), メモ(6), 未資金化区分(7), 入払区分(8)
+  # 三井住友: 年月日, お引出し, お預入れ, お取り扱い内容, 残高
+  # みずほ:   日付, 摘要, お支払金額, お預り金額, 残高, 手数料
+  # 楽天:     取引日, 摘要, 入出金(税込), 残高
   BANK_FORMATS = {
     "generic" => { date_col: 0, desc_col: 1, amount_col: 2, payer_col: nil, balance_col: nil },
-    "mufg" => { date_col: 0, desc_col: 2, amount_col: 3, payer_col: 2, balance_col: 5 },
-    "smbc" => { date_col: 0, desc_col: 2, amount_col: 3, payer_col: 2, balance_col: 5 },
-    "mizuho" => { date_col: 0, desc_col: 2, amount_col: 3, payer_col: 2, balance_col: 5 },
-    "rakuten" => { date_col: 0, desc_col: 1, amount_col: 2, payer_col: 1, balance_col: 3 }
+    "mufg" => { date_col: 0, desc_col: 1, amount_col: 4, payer_col: 2, balance_col: 5 },
+    "smbc" => { date_col: 0, desc_col: 3, amount_col: 2, payer_col: 3, balance_col: 4 },
+    "mizuho" => { date_col: 0, desc_col: 1, amount_col: 3, payer_col: 1, balance_col: 4 },
+    "rakuten" => { date_col: 0, desc_col: 3, amount_col: 1, payer_col: 3, balance_col: 2 }
   }.freeze
 
   class << self
@@ -41,11 +46,16 @@ class BankStatementImporter
   # @param csv_data [String]
   # @param filename [String]
   # @param bank_format [String, nil]
+  # @param tenant [Tenant]
+  # @param csv_data [String]
+  # @param filename [String]
+  # @param bank_format [String, nil] "auto"またはnilの場合は自動判定
   def initialize(tenant, csv_data, filename: "", bank_format: nil)
     @tenant = tenant
     @csv_data = csv_data
     @filename = filename
-    @bank_format = bank_format || detect_bank_format(filename)
+    explicit_format = bank_format.present? && bank_format != "auto" ? bank_format : nil
+    @bank_format = explicit_format || detect_bank_format(filename) || detect_bank_format_from_header(csv_data)
   end
 
   # CSVをパースしてインポートする
@@ -109,13 +119,32 @@ class BankStatementImporter
   # ファイル名から銀行フォーマットを推定する
   #
   # @param filename [String]
-  # @return [String]
+  # @return [String, nil] 判定できた場合はフォーマット名、不明な場合はnil
   def detect_bank_format(filename)
     name = filename.downcase
     return "mufg" if name.include?("mufg") || name.include?("三菱")
     return "smbc" if name.include?("smbc") || name.include?("三井")
     return "mizuho" if name.include?("mizuho") || name.include?("みずほ")
-    return "rakuten" if name.include?("rakuten") || name.include?("楽天")
+    return "rakuten" if name.include?("rakuten") || name.include?("楽天") || name.include?("rb-torihiki")
+
+    nil
+  end
+
+  # CSVのヘッダー行から銀行フォーマットを推定する
+  #
+  # @param csv_data [String]
+  # @return [String] フォーマット名
+  def detect_bank_format_from_header(csv_data)
+    header = ensure_utf8(csv_data).lines.first.to_s
+
+    # 三菱UFJ: "日付","摘要","摘要内容","支払い金額","預かり金額"
+    return "mufg" if header.include?("預かり金額") || header.include?("摘要内容")
+    # 三井住友: お引出し, お預入れ, お取り扱い内容
+    return "smbc" if header.include?("お取り扱い") || header.include?("お引出し")
+    # みずほ: お支払金額, お預り金額
+    return "mizuho" if header.include?("お預り金額")
+    # 楽天: 入出金(税込)
+    return "rakuten" if header.include?("入出金")
 
     "generic"
   end
@@ -142,10 +171,17 @@ class BankStatementImporter
     payer_name = format[:payer_col] ? row[format[:payer_col]]&.strip : nil
     balance = format[:balance_col] ? parse_amount(row[format[:balance_col]]&.strip) : nil
 
+    # descriptionが空の場合、他カラムからフォールバック
+    description = description.presence || payer_name.presence || row.compact.find(&:present?) || "不明"
+
+    # payer_nameが未設定の場合、descriptionをpayer_nameとしても使用
+    # （OCR確認済みデータなどgenericフォーマットではpayer_colがないため）
+    payer_name = payer_name.presence || description
+
     BankStatement.new(
       tenant: @tenant,
       transaction_date: date,
-      description: description || "",
+      description: description,
       payer_name: payer_name,
       amount: amount,
       balance: balance,
@@ -176,8 +212,14 @@ class BankStatementImporter
   def parse_date(str)
     return nil if str.blank?
 
+    cleaned = str.strip
+    # YYYYMMDD（スラッシュなし8桁）
+    if cleaned.match?(/\A\d{8}\z/)
+      return Date.strptime(cleaned, "%Y%m%d")
+    end
+
     # yyyy/mm/dd, yyyy-mm-dd, yyyy年mm月dd日
-    cleaned = str.gsub(/[年月]/, "/").gsub("日", "").strip
+    cleaned = cleaned.gsub(/[年月]/, "/").gsub("日", "")
     Date.parse(cleaned)
   rescue Date::Error, ArgumentError
     nil
@@ -194,7 +236,7 @@ class BankStatementImporter
     cleaned = str.gsub(/[,¥￥\s]/, "")
     return nil unless cleaned.match?(/\A-?\d+\z/)
 
-    cleaned.to_i.abs
+    cleaned.to_i
   end
 
   # 文字列が日付っぽいか判定する

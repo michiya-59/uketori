@@ -12,6 +12,7 @@ module Api
         # @return [void]
         def create
           authorize DunningRule, :create?
+          PlanLimitChecker.new(current_tenant).check!(:auto_dunning)
 
           result = DunningExecutor.call(current_tenant)
 

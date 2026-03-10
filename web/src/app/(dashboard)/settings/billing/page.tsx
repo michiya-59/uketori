@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { CreditCard, Check, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, CreditCard, Check, X, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { api, ApiClientError } from "@/lib/api-client";
 import type { Tenant, TenantPlan } from "@/types/tenant";
 
@@ -83,9 +101,23 @@ const PLAN_ORDER: TenantPlan[] = ["free", "starter", "standard", "professional"]
  * 現在のプラン表示とプラン比較テーブルを提供する
  * @returns プラン設定ページ要素
  */
+/** 現在の使用数 */
+interface UsageCounts {
+  users: number;
+  documentsMonthly: number;
+  customers: number;
+}
+
 export default function BillingPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [usage, setUsage] = useState<UsageCounts>({ users: 0, documentsMonthly: 0, customers: 0 });
+
+  // お問い合わせダイアログ
+  const [inquiryOpen, setInquiryOpen] = useState(false);
+  const [desiredPlan, setDesiredPlan] = useState<string>("");
+  const [inquiryMessage, setInquiryMessage] = useState("");
+  const [sending, setSending] = useState(false);
 
   /** テナント情報を取得する */
   const loadTenant = useCallback(async () => {
@@ -106,6 +138,75 @@ export default function BillingPage() {
     loadTenant();
   }, [loadTenant]);
 
+  /** 現在の使用数を取得する */
+  useEffect(() => {
+    const loadUsage = async () => {
+      try {
+        const [usersRes, docsRes, customersRes] = await Promise.all([
+          api.get<{ users: unknown[]; meta: { total_count: number } }>("/api/v1/users", { per_page: 1 }),
+          (() => {
+            const now = new Date();
+            const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            const to = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+            return api.get<{ meta: { total_count: number } }>("/api/v1/documents", {
+              "filter[issue_date_from]": from,
+              "filter[issue_date_to]": to,
+              per_page: 1,
+            });
+          })(),
+          api.get<{ customers: unknown[]; meta: { total_count: number } }>("/api/v1/customers", { per_page: 1 }),
+        ]);
+        setUsage({
+          users: usersRes.meta.total_count,
+          documentsMonthly: docsRes.meta.total_count,
+          customers: customersRes.meta.total_count,
+        });
+      } catch {
+        // ignore
+      }
+    };
+    loadUsage();
+  }, []);
+
+  /**
+   * お問い合わせダイアログを開く
+   */
+  const openInquiry = () => {
+    const currentPlan = tenant?.plan ?? "free";
+    const currentIndex = PLAN_ORDER.indexOf(currentPlan);
+    const nextPlan = PLAN_ORDER[currentIndex + 1] ?? "professional";
+    setDesiredPlan(nextPlan);
+    setInquiryMessage("");
+    setInquiryOpen(true);
+  };
+
+  /**
+   * お問い合わせを送信する
+   */
+  const handleSendInquiry = async () => {
+    if (!desiredPlan || !inquiryMessage.trim()) {
+      toast.error("希望プランとお問い合わせ内容を入力してください");
+      return;
+    }
+
+    setSending(true);
+    try {
+      await api.post("/api/v1/contact/plan_inquiry", {
+        desired_plan: PLANS[desiredPlan as TenantPlan]?.name ?? desiredPlan,
+        message: inquiryMessage,
+      });
+      toast.success("お問い合わせを送信しました。担当者より折り返しご連絡いたします。");
+      setInquiryOpen(false);
+    } catch (e) {
+      if (e instanceof ApiClientError) {
+        toast.error(e.body?.error?.message || "送信に失敗しました");
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -118,14 +219,22 @@ export default function BillingPage() {
 
   const currentPlan = tenant?.plan ?? "free";
   const planInfo = PLANS[currentPlan];
+  const upgradePlans = PLAN_ORDER.filter((p) => PLAN_ORDER.indexOf(p) > PLAN_ORDER.indexOf(currentPlan));
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">プラン設定</h1>
-        <p className="text-sm text-muted-foreground">
-          ご利用プランの確認と変更を行います
-        </p>
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="icon" asChild className="mt-1 shrink-0 size-10 sm:size-9">
+          <Link href="/settings/company">
+            <ArrowLeft className="size-5 sm:size-4" />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">プラン設定</h1>
+          <p className="text-sm text-muted-foreground">
+            ご利用プランの確認と変更を行います
+          </p>
+        </div>
       </div>
 
       <Card>
@@ -151,18 +260,21 @@ export default function BillingPage() {
             </div>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
-            <div>
-              <span className="text-muted-foreground">ユーザー数:</span>{" "}
-              <span className="font-medium">{planInfo.users}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">帳票数:</span>{" "}
-              <span className="font-medium">{planInfo.documents}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">顧客数:</span>{" "}
-              <span className="font-medium">{planInfo.customers}</span>
-            </div>
+            <UsageItem
+              label="ユーザー数"
+              current={usage.users}
+              limit={planInfo.users}
+            />
+            <UsageItem
+              label="今月の帳票数"
+              current={usage.documentsMonthly}
+              limit={planInfo.documents}
+            />
+            <UsageItem
+              label="顧客数"
+              current={usage.customers}
+              limit={planInfo.customers}
+            />
           </div>
         </CardContent>
       </Card>
@@ -247,27 +359,74 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-medium">プランのアップグレード</p>
-              <p className="text-sm text-muted-foreground">
-                より多くの機能をご利用いただけます
-              </p>
+      {upgradePlans.length > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-medium">プランのアップグレード</p>
+                <p className="text-sm text-muted-foreground">
+                  より多くの機能をご利用いただけます
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="self-start sm:self-auto"
+                onClick={openInquiry}
+              >
+                <Send className="mr-1.5 size-3.5" />
+                アップグレードのお問い合わせ
+              </Button>
             </div>
-            <Button
-              size="sm"
-              className="self-start sm:self-auto"
-              onClick={() =>
-                toast.info("プランの変更については、お問い合わせください。")
-              }
-            >
-              アップグレードのお問い合わせ
-            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* お問い合わせダイアログ */}
+      <Dialog open={inquiryOpen} onOpenChange={setInquiryOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>プランアップグレードのお問い合わせ</DialogTitle>
+            <DialogDescription>
+              ご希望のプランとお問い合わせ内容をご記入ください。担当者より折り返しご連絡いたします。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>希望プラン</Label>
+              <Select value={desiredPlan} onValueChange={setDesiredPlan}>
+                <SelectTrigger>
+                  <SelectValue placeholder="プランを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {upgradePlans.map((plan) => (
+                    <SelectItem key={plan} value={plan}>
+                      {PLANS[plan].name}（{PLANS[plan].price}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>お問い合わせ内容</Label>
+              <Textarea
+                value={inquiryMessage}
+                onChange={(e) => setInquiryMessage(e.target.value)}
+                placeholder="ご利用予定の人数やご質問など、ご自由にご記入ください"
+                rows={4}
+              />
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInquiryOpen(false)}>
+              キャンセル
+            </Button>
+            <Button onClick={handleSendInquiry} disabled={sending || !inquiryMessage.trim()}>
+              {sending ? "送信中..." : "送信する"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -282,5 +441,29 @@ function FeatureIcon({ enabled }: { enabled: boolean }) {
     <Check className="size-4 text-green-600 mx-auto" />
   ) : (
     <X className="size-4 text-muted-foreground mx-auto" />
+  );
+}
+
+/**
+ * 使用量表示コンポーネント
+ * @param label - ラベル
+ * @param current - 現在の使用数
+ * @param limit - 上限表示文字列
+ * @returns 使用量要素
+ */
+function UsageItem({ label, current, limit }: { label: string; current: number; limit: string }) {
+  const isUnlimited = limit === "無制限";
+  const limitNum = isUnlimited ? Infinity : parseInt(limit.replace(/[^0-9]/g, ""), 10);
+  const isNearLimit = !isUnlimited && !isNaN(limitNum) && current >= limitNum;
+  const isWarning = !isUnlimited && !isNaN(limitNum) && current >= limitNum * 0.8 && !isNearLimit;
+
+  return (
+    <div>
+      <span className="text-muted-foreground">{label}:</span>{" "}
+      <span className={`font-medium ${isNearLimit ? "text-red-600" : isWarning ? "text-amber-600" : ""}`}>
+        {current}
+      </span>
+      <span className="text-muted-foreground"> / {limit}</span>
+    </div>
   );
 }

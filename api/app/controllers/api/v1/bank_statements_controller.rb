@@ -23,10 +23,13 @@ module Api
         }
       end
 
-      # CSVファイルをインポートする
+      # 画像/PDFからOCRプレビューを取得する
+      #
+      # ダブルパス検証で抽出し、信頼度付きの行データを返す。
+      # ユーザーが確認・修正した後、import_confirmedで確定する。
       #
       # @return [void]
-      def import
+      def ocr_preview
         authorize BankStatement, :import?
 
         file = params[:file]
@@ -35,17 +38,60 @@ module Api
                         status: :unprocessable_entity
         end
 
-        csv_data = file.read
-        bank_format = params[:bank_format]
+        file_data = file.read
+        content_type = file.content_type
         filename = file.original_filename || ""
 
-        result = BankStatementImporter.call(
-          current_tenant, csv_data,
-          filename: filename, bank_format: bank_format
+        # 拡張子からcontent_typeを補完
+        if content_type.blank? || content_type == "application/octet-stream"
+          content_type = mime_from_extension(filename)
+        end
+
+        extraction = BankStatementOcrExtractor.call(
+          file_data,
+          content_type: content_type,
+          filename: filename
         )
 
-        # 非同期でAIマッチングを実行
-        AiBankMatchJob.perform_later(current_tenant.id, result[:batch_id], current_user.id)
+        render json: {
+          rows: extraction[:rows],
+          warnings_count: extraction[:warnings_count]
+        }
+      rescue BankStatementOcrExtractor::ExtractionError => e
+        render json: { error: { code: "ocr_error", message: e.message } },
+               status: :unprocessable_entity
+      end
+
+      # 確認済みOCRデータまたはCSVをインポートする
+      #
+      # CSV: params[:file] でアップロード
+      # OCR確認済み: params[:confirmed_rows] でJSON送信
+      #
+      # @return [void]
+      def import
+        authorize BankStatement, :import?
+
+        bank_format = params[:bank_format]
+
+        if params[:confirmed_rows].present?
+          # OCR確認済みデータのインポート
+          result = import_confirmed_rows(params[:confirmed_rows], bank_format: bank_format)
+        elsif params[:file].present?
+          file = params[:file]
+          content_type = file.content_type
+          filename = file.original_filename || ""
+
+          if ocr_file?(content_type, filename)
+            return render json: { error: { code: "validation_error",
+                                           message: "画像/PDFはまずocr_previewで確認してください" } },
+                          status: :unprocessable_entity
+          end
+
+          result = import_csv(file, filename: filename, bank_format: bank_format)
+        else
+          return render json: { error: { code: "validation_error", message: "ファイルまたは確認済みデータが必要です" } },
+                        status: :unprocessable_entity
+        end
 
         AuditLogger.log(
           user: current_user,
@@ -73,7 +119,8 @@ module Api
         statements = policy_scope(BankStatement).unmatched
                      .includes(ai_suggested_document: :customer)
                      .order(transaction_date: :desc)
-                     .page(page_param).per(per_page_param)
+        statements = statements.where(import_batch_id: params[:batch_id]) if params[:batch_id].present?
+        statements = statements.page(page_param).per(per_page_param)
 
         render json: {
           bank_statements: statements.map { |s| serialize_statement_with_suggestion(s) },
@@ -132,6 +179,7 @@ module Api
       # @return [void]
       def ai_suggest
         authorize @statement, :ai_suggest?
+        PlanLimitChecker.new(current_tenant).check!(:ai_matching)
 
         result = AiBankMatcher.suggest(current_tenant, @statement)
 
@@ -160,6 +208,68 @@ module Api
       # @return [void]
       def set_statement
         @statement = policy_scope(BankStatement).find(params[:id])
+      end
+
+      # OCR対象ファイルかどうかを判定する
+      #
+      # @param content_type [String]
+      # @param filename [String]
+      # @return [Boolean]
+      def ocr_file?(content_type, filename)
+        return true if BankStatementOcrExtractor.supported?(content_type)
+
+        ext = File.extname(filename).downcase
+        %w[.jpg .jpeg .png .gif .webp .pdf].include?(ext)
+      end
+
+      # ユーザーが確認・修正済みのOCRデータをインポートする
+      #
+      # @param rows_params [Array<Hash>] [{ date:, description:, amount: }, ...]
+      # @param bank_format [String, nil]
+      # @return [Hash] { imported: Integer, skipped: Integer, batch_id: String }
+      def import_confirmed_rows(rows_params, bank_format: nil)
+        rows = rows_params.map { |r| r.is_a?(ActionController::Parameters) ? r.permit(:date, :description, :amount).to_h : r }
+
+        csv_lines = ["取引日,摘要,金額"]
+        rows.each { |row| csv_lines << "#{row['date'] || row[:date]},#{row['description'] || row[:description]},#{row['amount'] || row[:amount]}" }
+        csv_data = csv_lines.join("\n")
+
+        # OCR確認済みデータは常に「取引日,摘要,金額」の3列固定フォーマット
+        # ユーザー選択の銀行フォーマットは無関係なので常にgenericで処理する
+        BankStatementImporter.call(
+          current_tenant, csv_data,
+          filename: "ocr_confirmed.csv", bank_format: "generic"
+        )
+      end
+
+      # CSVファイルをインポートする
+      #
+      # @param file [ActionDispatch::Http::UploadedFile]
+      # @param filename [String]
+      # @param bank_format [String, nil]
+      # @return [Hash]
+      def import_csv(file, filename:, bank_format:)
+        csv_data = file.read
+        BankStatementImporter.call(
+          current_tenant, csv_data,
+          filename: filename, bank_format: bank_format
+        )
+      end
+
+      # ファイル拡張子からMIMEタイプを推定する
+      #
+      # @param filename [String, nil]
+      # @return [String]
+      def mime_from_extension(filename)
+        ext = File.extname(filename.to_s).downcase
+        case ext
+        when ".jpg", ".jpeg" then "image/jpeg"
+        when ".png" then "image/png"
+        when ".gif" then "image/gif"
+        when ".webp" then "image/webp"
+        when ".pdf" then "application/pdf"
+        else "application/octet-stream"
+        end
       end
 
       # 顧客の未回収残高を再計算して更新する

@@ -43,9 +43,14 @@ module Api
 
       # 品目情報を更新する
       #
+      # デフォルト品目の更新は許可しない。
       # @return [void]
       def update
         authorize @product
+        if @product.default?
+          render json: { error: { message: "デフォルト品目は編集できません" } }, status: :forbidden
+          return
+        end
         @product.update!(product_params)
 
         render json: { product: serialize_product(@product) }
@@ -53,9 +58,14 @@ module Api
 
       # 品目を削除する
       #
+      # デフォルト品目の削除は許可しない。
       # @return [void]
       def destroy
         authorize @product
+        if @product.default?
+          render json: { error: { message: "デフォルト品目は削除できません" } }, status: :forbidden
+          return
+        end
         @product.destroy!
 
         head :no_content
@@ -91,6 +101,7 @@ module Api
           category: product.category,
           sort_order: product.sort_order,
           is_active: product.is_active,
+          is_default: product.is_default,
           created_at: product.created_at
         }
       end

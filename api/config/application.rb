@@ -23,6 +23,7 @@ module Api
     # API only
     config.api_only = true
 
+
     # タイムゾーン
     config.time_zone = "Asia/Tokyo"
     config.active_record.default_timezone = :utc

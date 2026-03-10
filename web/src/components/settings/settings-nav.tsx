@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Factory, Users, Bell } from "lucide-react";
+import { Building2, Factory, Package, Users, Bell, CreditCard, AlertTriangle } from "lucide-react";
 
 /** 設定ページのサブナビゲーション項目 */
 const SETTINGS_ITEMS = [
   { label: "会社設定", href: "/settings/company", icon: Building2 },
   { label: "業種テンプレート", href: "/settings/industry", icon: Factory },
+  { label: "品目マスタ", href: "/settings/products", icon: Package },
   { label: "ユーザー管理", href: "/settings/users", icon: Users },
   { label: "通知設定", href: "/settings/notifications", icon: Bell },
+  { label: "督促設定", href: "/settings/dunning", icon: AlertTriangle },
+  { label: "プラン・請求", href: "/settings/billing", icon: CreditCard },
 ];
 
 /**

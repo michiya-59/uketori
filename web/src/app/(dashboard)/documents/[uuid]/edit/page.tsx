@@ -12,6 +12,7 @@ import {
   Save,
   Plus,
   Trash2,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiClientError } from "@/lib/api-client";
+import {
+  ProductPickerDialog,
+  type ProductSelection,
+} from "@/components/documents/product-picker-dialog";
 import type { Customer } from "@/types/customer";
 import type { DocumentType } from "@/types/document";
 
@@ -133,6 +138,7 @@ export default function EditDocumentPage() {
   const uuid = params.uuid as string;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
 
   const {
     register,
@@ -148,6 +154,13 @@ export default function EditDocumentPage() {
       document_items_attributes: [],
     },
   });
+
+  // バリデーションエラーをコンソールに出力（デバッグ用）
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      console.log("Form validation errors:", errors);
+    }
+  }, [errors]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -199,7 +212,7 @@ export default function EditDocumentPage() {
           quantity: item.quantity,
           unit: item.unit ?? "",
           unit_price: item.unit_price,
-          tax_rate: item.tax_rate,
+          tax_rate: Number(item.tax_rate),
           tax_rate_type: item.tax_rate_type as "standard" | "reduced" | "exempt",
           item_type: item.item_type,
           sort_order: item.sort_order,
@@ -279,6 +292,22 @@ export default function EditDocumentPage() {
       unit_price: 0,
       tax_rate: 10,
       tax_rate_type: "standard",
+      item_type: "normal",
+      sort_order: fields.length,
+    });
+  };
+
+  /**
+   * 品目マスタから選択して明細行を追加する
+   * @param product - 選択された品目データ
+   */
+  const addFromProduct = (product: ProductSelection) => {
+    append({
+      name: product.name,
+      quantity: 1,
+      unit_price: product.unit_price,
+      tax_rate: product.tax_rate,
+      tax_rate_type: product.tax_rate_type,
       item_type: "normal",
       sort_order: fields.length,
     });
@@ -390,22 +419,26 @@ export default function EditDocumentPage() {
                   </p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label className="text-[15px]">支払期限</Label>
-                <Input
-                  type="date"
-                  {...register("due_date")}
-                  className="h-11 text-[15px]"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-[15px]">有効期限</Label>
-                <Input
-                  type="date"
-                  {...register("valid_until")}
-                  className="h-11 text-[15px]"
-                />
-              </div>
+              {["invoice", "purchase_order"].includes(watch("document_type")) && (
+                <div className="space-y-2">
+                  <Label className="text-[15px]">支払期限</Label>
+                  <Input
+                    type="date"
+                    {...register("due_date")}
+                    className="h-11 text-[15px]"
+                  />
+                </div>
+              )}
+              {watch("document_type") === "estimate" && (
+                <div className="space-y-2">
+                  <Label className="text-[15px]">有効期限</Label>
+                  <Input
+                    type="date"
+                    {...register("valid_until")}
+                    className="h-11 text-[15px]"
+                  />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -413,10 +446,21 @@ export default function EditDocumentPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">明細行</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={addItem}>
-              <Plus className="mr-1.5 size-4" />
-              行を追加
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setProductPickerOpen(true)}
+              >
+                <Package className="mr-1.5 size-4" />
+                品目から追加
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={addItem}>
+                <Plus className="mr-1.5 size-4" />
+                手入力で追加
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -437,175 +481,125 @@ export default function EditDocumentPage() {
                 const amount = Math.floor(qty * price);
                 const activeCount = fields.filter((_, i) => !items?.[i]?._destroy).length;
 
+                /** 明細行を削除（既存行は_destroy、新規行はremove） */
+                const handleRemove = () => {
+                  if (item?.id) {
+                    setValue(`document_items_attributes.${index}._destroy`, true);
+                  } else {
+                    remove(index);
+                  }
+                };
+
                 return (
-                  <div key={field.id}>
-                    {/* PC用: 横一列グリッド */}
-                    <div className="hidden sm:grid grid-cols-[1fr_80px_120px_120px_120px_40px] gap-2 items-center">
-                      <Input
-                        {...register(`document_items_attributes.${index}.name`)}
-                        placeholder="品名"
-                        className="h-10 text-[15px]"
-                      />
-                      <Input
-                        type="number"
-                        step="0.01"
-                        {...register(
-                          `document_items_attributes.${index}.quantity`,
-                          { valueAsNumber: true }
-                        )}
-                        className="h-10 text-[15px] text-right"
-                      />
-                      <Input
-                        type="number"
-                        {...register(
-                          `document_items_attributes.${index}.unit_price`,
-                          { valueAsNumber: true }
-                        )}
-                        className="h-10 text-[15px] text-right"
-                      />
-                      <Select
-                        value={item?.tax_rate_type ?? "standard"}
-                        onValueChange={(v) => {
-                          setValue(
-                            `document_items_attributes.${index}.tax_rate_type`,
-                            v as "standard" | "reduced" | "exempt"
-                          );
-                          const opt = TAX_RATE_OPTIONS.find(
-                            (o) => o.value === v
-                          );
-                          if (opt) {
-                            setValue(
-                              `document_items_attributes.${index}.tax_rate`,
-                              opt.rate
-                            );
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="h-10">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TAX_RATE_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-right tabular-nums text-[15px] font-medium">
-                        ¥{amount.toLocaleString()}
-                      </p>
+                  <div key={field.id} className="rounded-md border p-3 sm:border-0 sm:p-0">
+                    {/* SP用: 明細番号ヘッダー */}
+                    <div className="flex items-center justify-between sm:hidden mb-3">
+                      <span className="text-xs font-medium text-muted-foreground">明細 {index + 1}</span>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="size-8"
-                        onClick={() => {
-                          if (item?.id) {
-                            setValue(`document_items_attributes.${index}._destroy`, true);
-                          } else {
-                            remove(index);
-                          }
-                        }}
+                        className="size-7"
+                        onClick={handleRemove}
                         disabled={activeCount <= 1}
                       >
-                        <Trash2 className="size-4 text-muted-foreground" />
+                        <Trash2 className="size-3.5 text-muted-foreground" />
                       </Button>
                     </div>
 
-                    {/* SP用: カード型スタックレイアウト */}
-                    <div className="sm:hidden rounded-md border p-3 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">明細 {index + 1}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => {
-                            if (item?.id) {
-                              setValue(`document_items_attributes.${index}._destroy`, true);
-                            } else {
-                              remove(index);
-                            }
-                          }}
-                          disabled={activeCount <= 1}
-                        >
-                          <Trash2 className="size-3.5 text-muted-foreground" />
-                        </Button>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">品名</Label>
+                    {/* レスポンシブグリッド: SP=2列, PC=6列 */}
+                    <div className="grid grid-cols-2 sm:grid-cols-[1fr_80px_120px_120px_120px_40px] gap-3 sm:gap-2 items-end sm:items-center">
+                      {/* 品名 (SP: 2列幅, PC: 1列) */}
+                      <div className="col-span-2 sm:col-span-1 space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">品名</Label>
                         <Input
                           {...register(`document_items_attributes.${index}.name`)}
                           placeholder="品名"
                           className="h-10 text-[15px]"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">数量</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            {...register(
-                              `document_items_attributes.${index}.quantity`,
-                              { valueAsNumber: true }
-                            )}
-                            className="h-10 text-[15px] text-right"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">単価</Label>
-                          <Input
-                            type="number"
-                            {...register(
-                              `document_items_attributes.${index}.unit_price`,
-                              { valueAsNumber: true }
-                            )}
-                            className="h-10 text-[15px] text-right"
-                          />
-                        </div>
+
+                      {/* 数量 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">数量</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          {...register(
+                            `document_items_attributes.${index}.quantity`,
+                            { valueAsNumber: true }
+                          )}
+                          className="h-10 text-[15px] text-right"
+                        />
                       </div>
-                      <div className="grid grid-cols-2 gap-3 items-end">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">税率</Label>
-                          <Select
-                            value={item?.tax_rate_type ?? "standard"}
-                            onValueChange={(v) => {
+
+                      {/* 単価 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">単価</Label>
+                        <Input
+                          type="number"
+                          {...register(
+                            `document_items_attributes.${index}.unit_price`,
+                            { valueAsNumber: true }
+                          )}
+                          className="h-10 text-[15px] text-right"
+                        />
+                      </div>
+
+                      {/* 税率 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">税率</Label>
+                        <Select
+                          value={item?.tax_rate_type ?? "standard"}
+                          onValueChange={(v) => {
+                            setValue(
+                              `document_items_attributes.${index}.tax_rate_type`,
+                              v as "standard" | "reduced" | "exempt"
+                            );
+                            const opt = TAX_RATE_OPTIONS.find(
+                              (o) => o.value === v
+                            );
+                            if (opt) {
                               setValue(
-                                `document_items_attributes.${index}.tax_rate_type`,
-                                v as "standard" | "reduced" | "exempt"
+                                `document_items_attributes.${index}.tax_rate`,
+                                opt.rate
                               );
-                              const opt = TAX_RATE_OPTIONS.find(
-                                (o) => o.value === v
-                              );
-                              if (opt) {
-                                setValue(
-                                  `document_items_attributes.${index}.tax_rate`,
-                                  opt.rate
-                                );
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="h-10">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TAX_RATE_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="text-right">
-                          <Label className="text-xs text-muted-foreground">金額</Label>
-                          <p className="tabular-nums text-[15px] font-medium mt-1.5">
-                            ¥{amount.toLocaleString()}
-                          </p>
-                        </div>
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TAX_RATE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* 金額 */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground sm:hidden">金額</Label>
+                        <p className="text-right tabular-nums text-[15px] font-medium h-10 flex items-center justify-end">
+                          ¥{amount.toLocaleString()}
+                        </p>
+                      </div>
+
+                      {/* PC用: 削除ボタン */}
+                      <div className="hidden sm:flex justify-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          onClick={handleRemove}
+                          disabled={activeCount <= 1}
+                        >
+                          <Trash2 className="size-4 text-muted-foreground" />
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -681,6 +675,12 @@ export default function EditDocumentPage() {
           </Button>
         </div>
       </form>
+
+      <ProductPickerDialog
+        open={productPickerOpen}
+        onOpenChange={setProductPickerOpen}
+        onSelect={addFromProduct}
+      />
     </div>
   );
 }

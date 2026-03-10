@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_05_101443) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_10_143554) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -225,7 +225,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_05_101443) do
     t.index ["project_id"], name: "index_documents_on_project_id"
     t.index ["tenant_id", "document_type", "deleted_at"], name: "index_documents_on_tenant_id_and_document_type_and_deleted_at"
     t.index ["tenant_id", "document_type", "document_number"], name: "idx_on_tenant_id_document_type_document_number_42bd9c3139", unique: true, where: "(deleted_at IS NULL)"
-    t.index ["tenant_id", "due_date"], name: "index_documents_on_tenant_id_and_due_date", where: "(((document_type)::text = 'invoice'::text) AND ((payment_status)::text = ANY ((ARRAY['unpaid'::character varying, 'partial'::character varying, 'overdue'::character varying])::text[])))"
+    t.index ["tenant_id", "due_date"], name: "index_documents_on_tenant_id_and_due_date", where: "(((document_type)::text = 'invoice'::text) AND ((payment_status)::text = ANY (ARRAY[('unpaid'::character varying)::text, ('partial'::character varying)::text, ('overdue'::character varying)::text])))"
     t.index ["tenant_id", "imported_from", "external_id"], name: "index_documents_on_tenant_id_and_imported_from_and_external_id"
     t.index ["tenant_id", "payment_status", "due_date"], name: "index_documents_on_tenant_id_and_payment_status_and_due_date", where: "((document_type)::text = 'invoice'::text)"
     t.index ["tenant_id"], name: "index_documents_on_tenant_id"
@@ -363,6 +363,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_05_101443) do
     t.boolean "is_active", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "is_default", default: false, null: false
     t.index ["tenant_id"], name: "index_products_on_tenant_id"
   end
 

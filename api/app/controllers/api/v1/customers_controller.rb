@@ -96,6 +96,22 @@ module Api
         }
       end
 
+      # テキストをカタカナ読みに変換する
+      #
+      # 会社名入力時にフリガナを自動生成するためのエンドポイント。
+      # Claude Haiku APIを使用して漢字・英語等をカタカナに変換する。
+      #
+      # @return [void]
+      def katakana
+        authorize Customer, :create?
+
+        text = params[:text].to_s.strip
+        return render json: { katakana: "" } if text.blank?
+
+        katakana_text = convert_to_katakana(text)
+        render json: { katakana: katakana_text }
+      end
+
       # 顧客の適格請求書発行事業者番号を検証する
       #
       # @return [void]
@@ -115,6 +131,42 @@ module Api
       # @return [void]
       def set_customer
         @customer = policy_scope(Customer).active.find_by_uuid!(params[:id])
+      end
+
+      # テキストをカタカナ読みに変換する
+      #
+      # Claude Haiku APIを使用して正確なカタカナ読みを取得する。
+      # API未設定時は空文字を返す。
+      #
+      # @param text [String] 変換対象テキスト
+      # @return [String] カタカナ読み
+      def convert_to_katakana(text)
+        return "" unless ENV["ANTHROPIC_API_KEY"].present?
+
+        client = Anthropic::Client.new(api_key: ENV["ANTHROPIC_API_KEY"])
+        response = client.messages.create(
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 200,
+          temperature: 0.0,
+          messages: [{ role: "user", content: <<~PROMPT }]
+            以下のテキストのカタカナ読みだけを返してください。
+            ルール:
+            - カタカナのみで返すこと（漢字・ひらがな・英語は不可）
+            - 余計な説明や記号は一切不要
+            - 英語の会社名はカタカナ音訳すること（例: Day One Partners → デイワンパートナーズ）
+            - 法人格も含めること（例: 株式会社 → カブシキガイシャ）
+            - スペースは全角スペースにすること
+
+            テキスト: #{text}
+          PROMPT
+        )
+
+        result = response.content.first.text.strip
+        # カタカナ以外の文字が含まれていたら空文字を返す
+        result.match?(/\A[ァ-ヶー　\s]+\z/) ? result : ""
+      rescue StandardError => e
+        Rails.logger.warn("Katakana conversion failed: #{e.message}")
+        ""
       end
 
       # @return [ActionController::Parameters]

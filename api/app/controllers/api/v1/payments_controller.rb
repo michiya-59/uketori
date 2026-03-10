@@ -71,7 +71,15 @@ module Api
       def destroy
         authorize @payment
         document = @payment.document
+        bank_statement = @payment.bank_statement
+
         @payment.destroy!
+
+        # 紐づいた銀行明細も削除（再インポート可能にする）
+        if bank_statement
+          Rails.logger.info("Deleting bank_statement ##{bank_statement.id} (payer: #{bank_statement.payer_name}, amount: #{bank_statement.amount}) linked to payment")
+          bank_statement.destroy!
+        end
 
         # 顧客の未回収残高を更新
         update_customer_outstanding!(document.customer)
@@ -80,7 +88,7 @@ module Api
           user: current_user,
           action: "delete",
           resource: @payment,
-          changes: { document_uuid: document.uuid, amount: @payment.amount }
+          changes: { document_uuid: document.uuid, amount: @payment.amount, bank_statement_deleted: bank_statement&.id }
         )
 
         head :no_content
