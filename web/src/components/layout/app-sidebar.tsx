@@ -17,6 +17,7 @@ import {
   LogOut,
   ShieldCheck,
   MessageSquarePlus,
+  Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -70,6 +71,7 @@ const WORK_NAV: NavItem[] = [
  */
 function getToolNav(importEnabled: boolean): NavItem[] {
   return [
+    { label: "AI機能", href: "/ai", icon: Sparkles },
     { label: "データ移行", href: "/import", icon: Upload, disabled: !importEnabled },
     { label: "レポート", href: "/reports", icon: BarChart3 },
     { label: "設定", href: "/settings", icon: Settings },

@@ -101,6 +101,13 @@ Rails.application.routes.draw do
       # 通知
       resources :notifications, only: %i[index update]
 
+      # AI機能
+      scope :ai, as: :ai do
+        post :estimate_suggestion, to: "ai#estimate_suggestion"
+        post :revenue_forecast, to: "ai#revenue_forecast"
+        get "customer_analysis/:id", to: "ai#customer_analysis", as: :customer_analysis
+      end
+
       # ダッシュボード
       get "dashboard", to: "dashboard#show"
 
