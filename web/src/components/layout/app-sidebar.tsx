@@ -16,6 +16,7 @@ import {
   Settings,
   LogOut,
   ShieldCheck,
+  UserPlus,
   MessageSquarePlus,
   Sparkles,
 } from "lucide-react";
@@ -219,7 +220,10 @@ export function AppSidebar() {
         <NavGroup items={toolNav} label="ツール" pathname={pathname} />
         {isSystemAdmin && (
           <NavGroup
-            items={[{ label: "システム管理", href: "/admin", icon: ShieldCheck }]}
+            items={[
+              { label: "アカウント発行", href: "/admin/accounts", icon: UserPlus },
+              { label: "テナント管理", href: "/admin/tenants", icon: ShieldCheck },
+            ]}
             label="管理者"
             pathname={pathname}
           />

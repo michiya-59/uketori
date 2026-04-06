@@ -4,10 +4,9 @@ class Rack::Attack
     req.ip
   end
 
-  # 認証済みAPIレートリミット: 300リクエスト/分/ユーザー
-  throttle("api/user", limit: 300, period: 1.minute) do |req|
+  # 認証済みAPIレートリミット: 100リクエスト/分/ユーザー
+  throttle("api/user", limit: 100, period: 1.minute) do |req|
     if req.path.start_with?("/api/") && req.env["HTTP_AUTHORIZATION"].present?
-      # JWTトークンをキーとして使用（ユーザー単位のレートリミット）
       req.env["HTTP_AUTHORIZATION"]
     end
   end
@@ -15,13 +14,14 @@ class Rack::Attack
   # ログイン試行: 5回/5分/IP+メール
   throttle("logins/ip", limit: 5, period: 5.minutes) do |req|
     if req.path == "/api/v1/auth/sign_in" && req.post?
-      req.ip
+      email = req.params.dig("auth", "email").to_s.downcase
+      "#{req.ip}:#{email}"
     end
   end
 
   # パスワードリセット試行: 3回/15分/IP
   throttle("password_reset/ip", limit: 3, period: 15.minutes) do |req|
-    if req.path == "/api/v1/auth/password" && req.post?
+    if req.path == "/api/v1/auth/password/reset" && req.post?
       req.ip
     end
   end

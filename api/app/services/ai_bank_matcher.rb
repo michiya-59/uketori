@@ -8,16 +8,14 @@ require "anthropic"
 #
 # 原則:
 #   1. 金額一致は必須条件（金額不一致は候補にしない）
-#   2. 金額一致だけでは自動マッチしない（名前一致も必要）
-#   3. 名前が判定できない場合はAIに判断させる
-#   4. AIでも確信がなければ「未マッチ」にする（誤マッチより未マッチが安全）
+#   2. 名前は正規化後に完全一致するものだけ候補にする
+#   3. 類似・部分一致・AI推定では自動マッチさせない
+#   4. 確信が持てない場合は必ず「未マッチ」にする
 #
 # @example
 #   results = AiBankMatcher.call(tenant, batch_id, user: current_user)
 class AiBankMatcher
   AUTO_MATCH_THRESHOLD = 0.90
-  REVIEW_THRESHOLD = 0.70
-
   class << self
     # バッチ単位でマッチングを実行する
     #
@@ -138,51 +136,22 @@ class AiBankMatcher
 
     return nil if amount_candidates.empty?
 
-    # Step2: ルールベースの名前マッチング
+    # Step2: 正規化後の完全一致だけを許可する
     payer = stmt.payer_name.presence || stmt.description.presence || ""
     scored = amount_candidates.map do |inv|
       name_score = calculate_name_score(payer, inv)
-      { document: inv, name_score: name_score }
+      { document: inv, name_score: name_score, recency_score: calculate_recency_score(stmt, inv) }
     end
 
-    best_rule = scored.max_by { |c| c[:name_score] }
+    best_rule = scored.max_by { |c| [c[:name_score], c[:recency_score], c[:document].id] }
+    return nil unless best_rule && best_rule[:name_score] == 1.0
 
-    # 名前が高確度で一致 → ルールベースで確定
-    if best_rule[:name_score] >= 0.7
-      confidence = amount_candidates.length == 1 ? 0.98 : 0.95
-      return {
-        document: best_rule[:document],
-        confidence: confidence,
-        reason: "金額一致・振込名一致"
-      }
-    end
-
-    # 金額一致候補が1件＋名前がまあまあ一致
-    if amount_candidates.length == 1 && best_rule[:name_score] >= 0.3
-      return {
-        document: best_rule[:document],
-        confidence: 0.85,
-        reason: "金額一致・振込名類似・候補唯一"
-      }
-    end
-
-    # Step3: AI判定（名前がルールベースで判定できない場合）
-    if ai_available?
-      ai_result = ai_judge_match(stmt, payer, amount_candidates)
-      return ai_result if ai_result
-    end
-
-    # AIが使えない or AIでも判定不能な場合
-    # 金額一致候補が1件だけ → レビュー推奨として返す
-    if amount_candidates.length == 1
-      return {
-        document: amount_candidates.first,
-        confidence: 0.60,
-        reason: "金額一致のみ（名前未確認）・要レビュー"
-      }
-    end
-
-    nil
+    confidence = amount_candidates.length == 1 ? 0.98 : 0.95
+    {
+      document: best_rule[:document],
+      confidence: confidence,
+      reason: "金額一致・振込名完全一致"
+    }
   end
 
   # ルールベースの名前スコア（0.0〜1.0）
@@ -203,31 +172,17 @@ class AiBankMatcher
 
     return 0.0 if customer_variants.empty?
 
-    best = 0.0
-
     payer_variants.each do |pv|
       next if pv.blank? || pv.length < 2
 
       customer_variants.each do |cv|
         next if cv.blank? || cv.length < 2
 
-        if pv == cv
-          best = [best, 1.0].max
-          next
-        end
-
-        shorter, longer = [pv, cv].sort_by(&:length)
-        if shorter.length >= 3 && longer.include?(shorter)
-          best = [best, 0.8].max
-          next
-        end
-
-        sim = string_similarity(pv, cv)
-        best = [best, sim].max if sim > 0.6
+        return 1.0 if pv == cv
       end
     end
 
-    best
+    0.0
   end
 
   # 名前のバリエーションを生成する
@@ -242,11 +197,7 @@ class AiBankMatcher
     variants << base
 
     # 会社法人略称を削除（銀行の半角カタカナ略称: カ）ド）ユ）ゴ））
-    no_prefix = base
-                .gsub(/\A[カドユゴ][）\)]\s*/, "")
-                .gsub(/\A[（(]?株[）)]?\s*/, "")
-                .gsub(/\A[（(]?有[）)]?\s*/, "")
-                .gsub(/\A[（(]?合[）)]?\s*/, "")
+    no_prefix = strip_corporate_abbreviation(base)
     variants << no_prefix
 
     # 法人格を削除（漢字＋カタカナ両方対応）
@@ -265,13 +216,29 @@ class AiBankMatcher
     normalized = base.tr("－−\-", "ーーー")
     variants << normalized
     variants << to_zenkaku(normalized)
-    variants << to_zenkaku(normalized.gsub(/\A[カドユゴ][）\)]\s*/, ""))
+    variants << to_zenkaku(strip_corporate_abbreviation(normalized))
 
     # 正規化済み文字列から法人格略称も削除
-    no_prefix_normalized = normalized.gsub(/\A[カドユゴ][）\)]\s*/, "")
+    no_prefix_normalized = strip_corporate_abbreviation(normalized)
     variants << no_prefix_normalized
 
     variants.map { |v| v.gsub(/[\s　]+/, "").strip.downcase }.reject(&:blank?).uniq
+  end
+
+  # 銀行表記の法人格略称を前方・後方の両方から除去する
+  #
+  # 例:
+  # - カ）テスト -> テスト
+  # - ライズ（ド -> ライズ
+  #
+  # @param value [String]
+  # @return [String]
+  def strip_corporate_abbreviation(value)
+    value
+      .gsub(/\A[カドユゴ][）\)]\s*/, "")
+      .gsub(/\A[（(]?[株有合][）)]?\s*/, "")
+      .gsub(/\s*[（(][カドユゴ]\z/, "")
+      .gsub(/\s*[株有合][）)]\z/, "")
   end
 
   # 半角カタカナを全角カタカナに変換する
@@ -307,152 +274,22 @@ class AiBankMatcher
     result
   end
 
-  # 文字列類似度（レーベンシュタイン距離ベース）
+  # 取引日に近い請求書を優先するためのスコア
   #
-  # @param s1 [String]
-  # @param s2 [String]
-  # @return [Float] 0.0〜1.0
-  def string_similarity(s1, s2)
-    return 1.0 if s1 == s2
-    return 0.0 if s1.blank? || s2.blank?
-
-    max_len = [s1.length, s2.length].max
-    distance = levenshtein_distance(s1, s2)
-    1.0 - (distance.to_f / max_len)
-  end
-
-  # レーベンシュタイン距離
-  #
-  # @param s1 [String]
-  # @param s2 [String]
-  # @return [Integer]
-  def levenshtein_distance(s1, s2)
-    m = s1.length
-    n = s2.length
-    d = Array.new(m + 1) { Array.new(n + 1, 0) }
-    (0..m).each { |i| d[i][0] = i }
-    (0..n).each { |j| d[0][j] = j }
-    (1..m).each do |i|
-      (1..n).each do |j|
-        cost = s1[i - 1] == s2[j - 1] ? 0 : 1
-        d[i][j] = [d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost].min
-      end
-    end
-    d[m][n]
-  end
-
-  # AIで名前の一致を判定する
-  #
-  # ルールベースで判定できない場合にClaude APIを使って判定する。
-  # 銀行の半角カタカナ略称 ↔ 顧客の正式名（英語含む）の対応を判定。
+  # 同額・同一顧客の請求書が複数ある場合は、
+  # 入金日の直前に最も近い due_date / issue_date を優先する。
   #
   # @param stmt [BankStatement]
-  # @param payer [String]
-  # @param candidates [Array<Document>]
-  # @return [Hash, nil]
-  def ai_judge_match(stmt, payer, candidates)
-    invoice_list = candidates.map.with_index do |inv, i|
-      customer = inv.customer
-      "#{i + 1}. 請求書番号: #{inv.document_number}\n   顧客名: #{customer&.company_name}\n   顧客名カナ: #{customer&.company_name_kana.presence || '未登録'}\n   請求金額: #{inv.total_amount}円\n   残額: #{inv.remaining_amount}円"
-    end.join("\n\n")
+  # @param invoice [Document]
+  # @return [Float]
+  def calculate_recency_score(stmt, invoice)
+    return 0.0 if stmt.transaction_date.nil?
 
-    prompt = <<~PROMPT
-      あなたは銀行振込の消込を行う経理の専門家です。
-      銀行明細の振込名と、候補の請求書の顧客名が同一の会社かどうかを厳密に判定してください。
+    anchor_date = invoice.due_date || invoice.issue_date
+    return 0.0 if anchor_date.nil?
 
-      【重要なルール】
-      - 銀行の振込名は半角カタカナの略称です
-      - 会社法人格の略称: カ）=株式会社、ド）=合同会社、ユ）=有限会社、ゴ）=合資会社
-      - 英語社名はカタカナで表記されます（例: Day One Partners → デイワンパートナーズ）
-      - 「−」は長音「ー」と同じです
-      - 名前が明らかに異なる会社の場合、絶対にマッチさせないでください
-      - 確信が持てない場合は「該当なし」としてください
-      - 誤マッチは重大な経理ミスになります。慎重に判定してください
-
-      【銀行明細】
-      振込名: #{payer}
-      金額: #{stmt.amount}円
-      取引日: #{stmt.transaction_date}
-
-      【候補請求書（金額は一致済み）】
-      #{invoice_list}
-
-      振込名と顧客名が同一会社と判断できる候補があれば、その番号と確信度を回答してください。
-      確信度は以下の基準で設定:
-      - 0.95: 確実に同一会社（カタカナ↔英語の対応が明確）
-      - 0.80: おそらく同一会社
-      - 0.50以下: 不明・判定不能
-
-      JSON形式で回答: {"index": 1, "confidence": 0.95, "reason": "カ）デイワンパートナーズ = 株式会社Day One Partners（カタカナ音訳一致）"}
-      該当なしの場合: {"index": null, "confidence": 0.0, "reason": "振込名と一致する顧客なし"}
-    PROMPT
-
-    response = call_claude_api(prompt)
-    Rails.logger.info("AI match response for '#{payer}': #{response}")
-    return nil if response.blank?
-
-    parse_ai_response(response, candidates)
-  rescue StandardError => e
-    Rails.logger.warn("AI matching failed for '#{payer}': #{e.class} #{e.message}")
-    nil
-  end
-
-  # Claude APIが利用可能かチェックする
-  #
-  # @return [Boolean]
-  def ai_available?
-    ENV["ANTHROPIC_API_KEY"].present?
-  end
-
-  # Claude APIを呼び出す
-  #
-  # @param prompt [String]
-  # @return [String, nil]
-  def call_claude_api(prompt)
-    return nil unless ai_available?
-
-    client = Anthropic::Client.new(api_key: ENV["ANTHROPIC_API_KEY"])
-    response = client.messages.create(
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
-      temperature: 0.0,
-      messages: [{ role: "user", content: prompt }]
-    )
-
-    response.content.first.text
-  rescue StandardError => e
-    Rails.logger.warn("Claude API error: #{e.message}")
-    nil
-  end
-
-  # AIレスポンスをパースする
-  #
-  # @param response_text [String]
-  # @param candidates [Array<Document>]
-  # @return [Hash, nil]
-  def parse_ai_response(response_text, candidates)
-    # マークダウンコードブロックを除去してからJSON抽出
-    cleaned = response_text.gsub(/```(?:json)?\s*/, "").gsub(/```/, "").strip
-    json_match = cleaned.match(/\{.+\}/m)
-    return nil unless json_match
-
-    result = JSON.parse(json_match[0])
-    index = result["index"]
-    return nil if index.nil?
-
-    candidate = candidates[index.to_i - 1]
-    return nil unless candidate
-
-    ai_confidence = result["confidence"].to_f
-    return nil if ai_confidence < REVIEW_THRESHOLD
-
-    {
-      document: candidate,
-      confidence: ai_confidence,
-      reason: "AI判定: #{result['reason'] || '不明'}"
-    }
-  rescue JSON::ParserError
-    nil
+    diff_days = (stmt.transaction_date - anchor_date).to_i.abs
+    1.0 / (diff_days + 1)
   end
 
   # 自動マッチングを実行して入金レコードを作成する

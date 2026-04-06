@@ -3,7 +3,8 @@
 # 入金管理の認可ポリシー
 #
 # 全ロールが入金一覧を閲覧できる。
-# accountant以上が入金の登録・削除を行える。
+# デフォルト: accountant以上が登録、admin以上が削除。
+# カスタム権限で上書き可能。
 class PaymentRecordPolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -19,18 +20,18 @@ class PaymentRecordPolicy < ApplicationPolicy
     true
   end
 
-  # 登録: accountant以上
+  # 登録: デフォルトaccountant以上
   #
   # @return [Boolean]
   def create?
-    accountant_or_above?
+    check_permission("payment_record", "create", "accountant")
   end
 
-  # 削除: admin以上
+  # 削除: デフォルトadmin以上
   #
   # @return [Boolean]
   def destroy?
-    admin_or_above?
+    check_permission("payment_record", "destroy", "admin")
   end
 
   # 入金一覧のスコープ

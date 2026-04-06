@@ -2,48 +2,49 @@
 
 # データ移行ジョブの認可ポリシー
 #
-# admin以上がインポート操作を行える。
+# デフォルト: admin以上がインポート操作を行える。
+# カスタム権限で上書き可能。
 class ImportJobPolicy < ApplicationPolicy
-  # 詳細表示: admin以上
+  # 詳細表示: デフォルトadmin以上
   #
   # @return [Boolean]
   def show?
-    admin_or_above?
+    check_permission("import_job", "result", "admin")
   end
 
-  # 作成: admin以上
+  # 作成: デフォルトadmin以上
   #
   # @return [Boolean]
   def create?
-    admin_or_above?
+    check_permission("import_job", "create", "admin")
   end
 
-  # プレビュー: admin以上
+  # プレビュー: デフォルトadmin以上
   #
   # @return [Boolean]
   def preview?
-    admin_or_above?
+    check_permission("import_job", "preview", "admin")
   end
 
-  # マッピング設定: admin以上
+  # マッピング設定: デフォルトadmin以上
   #
   # @return [Boolean]
   def mapping?
-    admin_or_above?
+    check_permission("import_job", "mapping", "admin")
   end
 
-  # 実行: admin以上
+  # 実行: デフォルトadmin以上
   #
   # @return [Boolean]
   def execute?
-    admin_or_above?
+    check_permission("import_job", "execute", "admin")
   end
 
-  # 結果表示: admin以上
+  # 結果表示: デフォルトadmin以上
   #
   # @return [Boolean]
   def result?
-    admin_or_above?
+    check_permission("import_job", "result", "admin")
   end
 
   # インポートジョブ一覧のスコープ

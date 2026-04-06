@@ -107,5 +107,18 @@ RSpec.describe DocumentConverter do
         }.to raise_error(DocumentConverter::ConversionError)
       end
     end
+
+    context "未入金の請求書→領収書の場合" do
+      let!(:invoice) do
+        create(:document, tenant: tenant, customer: customer, created_by_user: user,
+               document_type: "invoice", payment_status: "unpaid", remaining_amount: 10_000)
+      end
+
+      it "ConversionErrorが発生すること" do
+        expect {
+          described_class.call(invoice, "receipt", user: user, tenant: tenant)
+        }.to raise_error(DocumentConverter::ConversionError, /入金完了済み/)
+      end
+    end
   end
 end

@@ -12,7 +12,7 @@ module Api
       # @return [void]
       def show
         authorize current_tenant, policy_class: TenantPolicy
-        render json: { tenant: serialize_tenant(current_tenant) }
+        render json: { tenant: serialize_tenant(current_tenant), meta: { your_ip: client_ip } }
       end
 
       # テナント設定を更新する
@@ -23,6 +23,7 @@ module Api
         if params[:tenant].present?
           old_industry = current_tenant.industry_type
           current_tenant.update!(tenant_params)
+          persist_attachment_urls!(current_tenant)
           sync_default_products_if_industry_changed(old_industry)
         end
         render json: { tenant: serialize_tenant(current_tenant) }
@@ -49,8 +50,26 @@ module Api
           # 帳票設定
           :document_sequence_format, :default_payment_terms_days, :default_tax_rate,
           # 督促
-          :dunning_enabled
+          :dunning_enabled,
+          # IP制限
+          :ip_restriction_enabled,
+          # 添付
+          :logo, :seal,
+          allowed_ip_addresses: []
         )
+      end
+
+      # 添付ファイルのblob URLを既存カラムへ反映する
+      #
+      # @param tenant [Tenant]
+      # @return [void]
+      def persist_attachment_urls!(tenant)
+        return unless params[:tenant].present?
+
+        updates = {}
+        updates[:logo_url] = tenant.logo_storage_url if params[:tenant][:logo].present?
+        updates[:seal_url] = tenant.seal_storage_url if params[:tenant][:seal].present?
+        tenant.update_columns(updates) if updates.present?
       end
 
       # 業種変更時にデフォルト品目を入れ替える
@@ -116,6 +135,8 @@ module Api
           fax: tenant.fax,
           email: tenant.email,
           website: tenant.website,
+          logo_url: tenant.logo_storage_url,
+          seal_url: tenant.seal_storage_url,
           # インボイス
           invoice_registration_number: tenant.invoice_registration_number,
           invoice_number_verified: tenant.invoice_number_verified,
@@ -136,6 +157,9 @@ module Api
           default_tax_rate: tenant.default_tax_rate,
           # 督促
           dunning_enabled: tenant.dunning_enabled,
+          # IP制限
+          ip_restriction_enabled: tenant.ip_restriction_enabled,
+          allowed_ip_addresses: tenant.allowed_ip_addresses,
           # 機能フラグ
           import_enabled: tenant.import_enabled,
           # メタ

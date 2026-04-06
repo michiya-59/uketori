@@ -1,2 +1,8 @@
-#!/usr/bin/env ruby
-exec "./bin/rails", "server", *ARGV
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v mise >/dev/null 2>&1; then
+  exec mise exec -- ./bin/rails server "$@"
+fi
+
+exec ./bin/rails server "$@"

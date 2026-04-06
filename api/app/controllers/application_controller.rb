@@ -12,6 +12,7 @@ class ApplicationController < ActionController::API
   rescue_from Pundit::NotAuthorizedError, with: :forbidden
   rescue_from ActionController::ParameterMissing, with: :bad_request
   rescue_from PlanLimitExceededError, with: :plan_limit_exceeded
+  rescue_from IpRestrictedError, with: :ip_restricted
 
   private
 
@@ -50,6 +51,25 @@ class ApplicationController < ActionController::API
   # @return [Tenant, nil] 現在のテナント
   def current_tenant
     Current.tenant
+  end
+
+  # クライアントの実IPアドレスを取得する
+  #
+  # プロキシ/CDN経由のヘッダーを優先的に参照し、本番環境でもローカル開発でも
+  # 正しいクライアントIPを返す。
+  #
+  # 優先順位:
+  #   1. CF-Connecting-IP (Cloudflare)
+  #   2. X-Real-IP (Nginx等)
+  #   3. X-Forwarded-For の先頭IP
+  #   4. request.remote_ip (フォールバック)
+  #
+  # @return [String] クライアントIPアドレス
+  def client_ip
+    request.headers["CF-Connecting-IP"].presence ||
+      request.headers["X-Real-IP"].presence ||
+      request.headers["X-Forwarded-For"]&.split(",")&.first&.strip.presence ||
+      request.remote_ip
   end
 
   # Authorizationヘッダーからベアラートークンを抽出する
@@ -121,5 +141,48 @@ class ApplicationController < ActionController::API
   # @return [void]
   def plan_limit_exceeded(exception)
     render json: { error: { code: "plan_limit_exceeded", message: exception.message } }, status: :unprocessable_entity
+  end
+
+  # 403 IP制限レスポンスを返す
+  #
+  # @param _exception [IpRestrictedError]
+  # @return [void]
+  def ip_restricted(_exception = nil)
+    render json: {
+      error: {
+        code: "ip_restricted",
+        message: "このIPアドレスからのアクセスは許可されていません",
+        your_ip: client_ip
+      }
+    }, status: :forbidden
+  end
+
+  # テナントのIP制限設定に基づきリクエスト元IPを検証する
+  #
+  # 認証済みユーザーのテナントにIP制限が設定されている場合、
+  # リクエスト元IPが許可リストに含まれるかチェックする。
+  # ローカルIPアドレス（::1, 127.0.0.1）の場合はスキップする
+  # （本番ではリバースプロキシがX-Forwarded-For等を付与するため該当しない）。
+  #
+  # @return [void]
+  # @raise [IpRestrictedError] IPが許可されていない場合
+  def enforce_ip_restriction!
+    return unless current_tenant&.ip_restriction_enabled?
+
+    ip = client_ip
+    return if loopback_ip?(ip)
+    return if current_tenant.ip_allowed?(ip)
+
+    raise IpRestrictedError
+  end
+
+  # ループバック（ローカル）IPかどうかを判定する
+  #
+  # @param ip [String] IPアドレス
+  # @return [Boolean]
+  def loopback_ip?(ip)
+    IPAddr.new(ip).loopback?
+  rescue IPAddr::InvalidAddressError
+    false
   end
 end

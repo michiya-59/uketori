@@ -20,8 +20,8 @@ RSpec.describe "Api::V1::Auth::Invitations", type: :request do
              params: {
                auth: {
                  token: invited_user.invitation_token,
-                 password: "newpassword123",
-                 password_confirmation: "newpassword123"
+                 password: "Newpassword123!",
+                 password_confirmation: "Newpassword123!"
                }
              },
              as: :json
@@ -40,8 +40,8 @@ RSpec.describe "Api::V1::Auth::Invitations", type: :request do
              params: {
                auth: {
                  token: invited_user.invitation_token,
-                 password: "newpassword123",
-                 password_confirmation: "newpassword123"
+                 password: "Newpassword123!",
+                 password_confirmation: "Newpassword123!"
                }
              },
              as: :json
@@ -57,14 +57,14 @@ RSpec.describe "Api::V1::Auth::Invitations", type: :request do
              params: {
                auth: {
                  token: token,
-                 password: "newpassword123",
-                 password_confirmation: "newpassword123"
+                 password: "Newpassword123!",
+                 password_confirmation: "Newpassword123!"
                }
              },
              as: :json
 
         post "/api/v1/auth/sign_in",
-             params: { auth: { email: "invited@example.com", password: "newpassword123" } },
+             params: { auth: { email: "invited@example.com", password: "Newpassword123!" } },
              as: :json
         expect(response).to have_http_status(:ok)
       end
@@ -76,8 +76,8 @@ RSpec.describe "Api::V1::Auth::Invitations", type: :request do
              params: {
                auth: {
                  token: "invalid_token",
-                 password: "newpassword123",
-                 password_confirmation: "newpassword123"
+                 password: "Newpassword123!",
+                 password_confirmation: "Newpassword123!"
                }
              },
              as: :json
@@ -94,7 +94,7 @@ RSpec.describe "Api::V1::Auth::Invitations", type: :request do
              params: {
                auth: {
                  token: invited_user.invitation_token,
-                 password: "newpassword123",
+                 password: "Newpassword123!",
                  password_confirmation: "different"
                }
              },

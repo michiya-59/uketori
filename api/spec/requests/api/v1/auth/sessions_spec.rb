@@ -4,12 +4,12 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::Auth::Sessions", type: :request do
   let!(:tenant) { create(:tenant) }
-  let!(:user) { create(:user, :owner, tenant: tenant, password: "password123", password_confirmation: "password123") }
+  let!(:user) { create(:user, :owner, tenant: tenant, password: "Password123!", password_confirmation: "Password123!") }
 
   describe "POST /api/v1/auth/sign_in" do
     context "正しい認証情報の場合" do
       it "ユーザー情報とトークンが返されること" do
-        post "/api/v1/auth/sign_in", params: { auth: { email: user.email, password: "password123" } }, as: :json
+        post "/api/v1/auth/sign_in", params: { auth: { email: user.email, password: "Password123!" } }, as: :json
 
         expect(response).to have_http_status(:ok)
         body = response.parsed_body
@@ -20,7 +20,7 @@ RSpec.describe "Api::V1::Auth::Sessions", type: :request do
 
       it "サインイン回数が増加すること" do
         expect {
-          post "/api/v1/auth/sign_in", params: { auth: { email: user.email, password: "password123" } }, as: :json
+          post "/api/v1/auth/sign_in", params: { auth: { email: user.email, password: "Password123!" } }, as: :json
         }.to change { user.reload.sign_in_count }.by(1)
       end
     end
@@ -37,7 +37,7 @@ RSpec.describe "Api::V1::Auth::Sessions", type: :request do
 
     context "存在しないメールアドレスの場合" do
       it "401エラーが返されること" do
-        post "/api/v1/auth/sign_in", params: { auth: { email: "nonexistent@example.com", password: "password123" } }, as: :json
+        post "/api/v1/auth/sign_in", params: { auth: { email: "nonexistent@example.com", password: "Password123!" } }, as: :json
 
         expect(response).to have_http_status(:unauthorized)
       end

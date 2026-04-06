@@ -114,6 +114,8 @@ module Api
           serialize_tenant(tenant).merge(
             email: tenant.email,
             phone: tenant.phone,
+            logo_url: tenant.logo_storage_url,
+            seal_url: tenant.seal_storage_url,
             industry_type: tenant.industry_type,
             plan_started_at: tenant.plan_started_at,
             invoice_registration_number: tenant.invoice_registration_number,

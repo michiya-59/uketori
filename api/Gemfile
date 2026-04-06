@@ -26,6 +26,7 @@ gem "image_processing", "~> 1.2"
 
 # AI
 gem "anthropic", require: false
+gem "connection_pool", "~> 2.5"
 
 # メール
 gem "sendgrid-ruby", require: false
@@ -44,6 +45,7 @@ gem "thruster", require: false
 gem "bootsnap", require: "bootsnap/setup"
 
 group :development do
+  gem "dotenv-rails"
 end
 
 group :development, :test do

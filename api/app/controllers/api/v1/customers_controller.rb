@@ -189,11 +189,18 @@ module Api
       def apply_filters(scope)
         scope = scope.search_by_name(params.dig(:filter, :q)) if params.dig(:filter, :q).present?
         scope = scope.where(customer_type: params.dig(:filter, :customer_type)) if params.dig(:filter, :customer_type).present?
+        if params.dig(:filter, :tags).present?
+          tags = Array(params.dig(:filter, :tags)).map(&:to_s).reject(&:blank?)
+          scope = scope.with_any_tags(tags) if tags.any?
+        end
         if params.dig(:filter, :credit_score_min).present?
           scope = scope.where("credit_score >= ?", params.dig(:filter, :credit_score_min).to_i)
         end
         if params.dig(:filter, :credit_score_max).present?
           scope = scope.where("credit_score <= ?", params.dig(:filter, :credit_score_max).to_i)
+        end
+        if params.dig(:filter, :outstanding_min).present?
+          scope = scope.with_outstanding_at_least(params.dig(:filter, :outstanding_min).to_i)
         end
         scope = scope.with_overdue if params.dig(:filter, :has_overdue) == "true"
         scope

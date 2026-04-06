@@ -10,7 +10,10 @@ RSpec.describe "Api::V1::Customers", type: :request do
   let!(:customer) { create(:customer, tenant: tenant, company_name: "テスト株式会社") }
 
   describe "GET /api/v1/customers" do
-    let!(:customer2) { create(:customer, tenant: tenant, company_name: "サンプル商事", customer_type: "vendor", credit_score: 80) }
+    let!(:customer2) do
+      create(:customer, tenant: tenant, company_name: "サンプル商事", company_name_kana: "サンプルショウジ",
+                        customer_type: "vendor", credit_score: 80)
+    end
     let!(:customer3) { create(:customer, tenant: tenant, company_name: "テスト工業", credit_score: 20) }
 
     context "認証済みユーザーの場合" do
@@ -31,6 +34,16 @@ RSpec.describe "Api::V1::Customers", type: :request do
         body = response.parsed_body
         expect(body["customers"].length).to eq(2)
       end
+
+      it "会社名カナでも部分一致で検索されること" do
+        customer2.update!(company_name_kana: "サンプルショウジ")
+
+        get "/api/v1/customers", params: { filter: { q: "サンプル" } }, headers: auth_headers(owner)
+
+        body = response.parsed_body
+        expect(body["customers"].length).to eq(1)
+        expect(body["customers"][0]["company_name"]).to eq("サンプル商事")
+      end
     end
 
     context "顧客種別フィルタの場合" do
@@ -46,6 +59,35 @@ RSpec.describe "Api::V1::Customers", type: :request do
     context "与信スコアフィルタの場合" do
       it "スコア範囲で絞り込めること" do
         get "/api/v1/customers", params: { filter: { credit_score_min: 50 } }, headers: auth_headers(owner)
+
+        body = response.parsed_body
+        expect(body["customers"].length).to eq(1)
+        expect(body["customers"][0]["company_name"]).to eq("サンプル商事")
+      end
+    end
+
+    context "タグフィルタの場合" do
+      before do
+        customer.update!(tags: ["vip", "tokyo"])
+        customer2.update!(tags: ["osaka"])
+      end
+
+      it "OR条件で絞り込めること" do
+        get "/api/v1/customers", params: { filter: { tags: %w[vip osaka] } }, headers: auth_headers(owner)
+
+        body = response.parsed_body
+        expect(body["customers"].length).to eq(2)
+      end
+    end
+
+    context "未回収残高フィルタの場合" do
+      before do
+        customer.update!(total_outstanding: 10_000)
+        customer2.update!(total_outstanding: 200_000)
+      end
+
+      it "下限以上で絞り込めること" do
+        get "/api/v1/customers", params: { filter: { outstanding_min: 100_000 } }, headers: auth_headers(owner)
 
         body = response.parsed_body
         expect(body["customers"].length).to eq(1)

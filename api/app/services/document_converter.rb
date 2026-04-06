@@ -70,9 +70,12 @@ class DocumentConverter
   # @raise [ConversionError]
   def validate_conversion!
     allowed = CONVERSIONS[@source.document_type] || []
-    return if allowed.include?(@target_type)
+    raise ConversionError, "#{@source.document_type}から#{@target_type}への変換はできません" unless allowed.include?(@target_type)
 
-    raise ConversionError, "#{@source.document_type}から#{@target_type}への変換はできません"
+    return unless @source.document_type == "invoice" && @target_type == "receipt"
+    return if @source.payment_status == "paid" || @source.remaining_amount.to_i <= 0
+
+    raise ConversionError, "請求書から領収書への変換は入金完了済みの場合のみ可能です"
   end
 
   # 変換先の帳票を構築する

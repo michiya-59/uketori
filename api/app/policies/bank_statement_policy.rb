@@ -3,7 +3,8 @@
 # 銀行明細の認可ポリシー
 #
 # 全ロールが明細を閲覧できる。
-# accountant以上がインポート・マッチング操作を行える。
+# デフォルト: accountant以上がインポート・マッチング操作。
+# カスタム権限で上書き可能。
 class BankStatementPolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -12,18 +13,18 @@ class BankStatementPolicy < ApplicationPolicy
     true
   end
 
-  # インポート: accountant以上
+  # インポート: デフォルトaccountant以上
   #
   # @return [Boolean]
   def import?
-    accountant_or_above?
+    check_permission("bank_statement", "import", "accountant")
   end
 
-  # OCRプレビュー: accountant以上
+  # OCRプレビュー: デフォルトaccountant以上
   #
   # @return [Boolean]
   def ocr_preview?
-    accountant_or_above?
+    check_permission("bank_statement", "ocr_preview", "accountant")
   end
 
   # 未マッチ一覧: 全ロール許可
@@ -33,25 +34,25 @@ class BankStatementPolicy < ApplicationPolicy
     true
   end
 
-  # 手動マッチング: accountant以上
+  # 手動マッチング: デフォルトaccountant以上
   #
   # @return [Boolean]
   def match?
-    accountant_or_above?
+    check_permission("bank_statement", "match", "accountant")
   end
 
-  # AI自動マッチング: accountant以上
+  # AI自動マッチング: デフォルトaccountant以上
   #
   # @return [Boolean]
   def ai_match?
-    accountant_or_above?
+    check_permission("bank_statement", "ai_match", "accountant")
   end
 
-  # AIマッチング候補提案: accountant以上
+  # AIマッチング候補提案: デフォルトaccountant以上
   #
   # @return [Boolean]
   def ai_suggest?
-    accountant_or_above?
+    check_permission("bank_statement", "ai_suggest", "accountant")
   end
 
   # 銀行明細一覧のスコープ

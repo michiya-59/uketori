@@ -216,7 +216,7 @@ module Api
       # @return [void]
       def pdf
         authorize @document
-        PdfGenerator.call(@document) unless @document.pdf_generated_at.present?
+        PdfGenerator.call(@document)
         @document.reload
 
         # 署名付きURLは期限切れの可能性があるため、blobから再生成
@@ -333,7 +333,7 @@ module Api
         signer.presigned_url(:get_object, bucket: bucket, key: blob_key, expires_in: 1800)
       rescue StandardError => e
         Rails.logger.warn("Failed to generate signed URL: #{e.message}")
-        document.pdf_url
+        raise ActiveRecord::RecordNotFound, "署名付きURLの生成に失敗しました"
       end
 
       # PDFが未生成の場合に同期生成する

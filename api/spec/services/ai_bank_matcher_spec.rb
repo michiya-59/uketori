@@ -60,11 +60,12 @@ RSpec.describe AiBankMatcher do
                payer_name: "ヤマダタロウ", import_batch_id: batch_id)
       end
 
-      it "needs_reviewまたはunmatchedになること" do
+      it "未マッチになること" do
         results = described_class.call(tenant, batch_id, user: user)
 
-        # 金額一致のみ(0.50)でneeds_reviewにはならないが、unmatchedになる
-        expect(results[:auto_matched] + results[:needs_review] + results[:unmatched]).to eq(1)
+        expect(results[:auto_matched]).to eq(0)
+        expect(results[:needs_review]).to eq(0)
+        expect(results[:unmatched]).to eq(1)
       end
     end
 
@@ -101,6 +102,82 @@ RSpec.describe AiBankMatcher do
 
         expect(results[:auto_matched]).to eq(2)
         expect(PaymentRecord.count).to eq(2)
+      end
+    end
+
+    context "銀行振込名が後方の法人格略称付きの場合" do
+      let!(:customer) do
+        create(:customer, tenant: tenant,
+                          company_name: "合同会社ライズ",
+                          company_name_kana: "ゴウドウガイシャ ライズ")
+      end
+      let!(:rise_invoice) do
+        create(:document, :invoice, :approved, tenant: tenant, customer: customer, created_by_user: user,
+               document_number: "INV-202604-0005",
+               issue_date: Date.new(2026, 4, 6),
+               total_amount: 80_000, remaining_amount: 80_000, payment_status: "unpaid")
+      end
+      let!(:statement) do
+        create(:bank_statement, tenant: tenant,
+               transaction_date: Date.new(2026, 4, 6),
+               amount: 80_000,
+               payer_name: "ライズ（ド",
+               description: "振込１",
+               import_batch_id: batch_id)
+      end
+
+      before do
+        invoice.destroy!
+      end
+
+      it "法人格略称を除去して自動マッチすること" do
+        results = described_class.call(tenant, batch_id, user: user)
+
+        expect(results[:auto_matched]).to eq(1)
+        expect(results[:needs_review]).to eq(0)
+        expect(results[:unmatched]).to eq(0)
+        expect(statement.reload.matched_document_id).to eq(rise_invoice.id)
+      end
+    end
+
+    context "英語社名由来のカナ揺れがあり同額請求書が複数ある場合" do
+      let!(:customer) do
+        create(:customer, tenant: tenant,
+                          company_name: "株式会社Day One Partners",
+                          company_name_kana: "カブシキカイシャワンデイパートナーズ")
+      end
+      let!(:march_invoice) do
+        create(:document, :invoice, :approved, tenant: tenant, customer: customer, created_by_user: user,
+               document_number: "INV-202603-0001",
+               issue_date: Date.new(2026, 3, 1), due_date: Date.new(2026, 3, 30),
+               total_amount: 5500, remaining_amount: 5500, payment_status: "unpaid")
+      end
+      let!(:older_invoice) do
+        create(:document, :invoice, :approved, tenant: tenant, customer: customer, created_by_user: user,
+               document_number: "INV-202602-0001",
+               issue_date: Date.new(2026, 2, 1), due_date: Date.new(2026, 2, 28),
+               total_amount: 5500, remaining_amount: 5500, payment_status: "unpaid")
+      end
+      let!(:statement) do
+        create(:bank_statement, tenant: tenant,
+               transaction_date: Date.new(2026, 3, 31),
+               amount: 5500,
+               payer_name: "カ）デイワンパ−トナ−ズ",
+               description: "カ）デイワンパ−トナ−ズ",
+               import_batch_id: batch_id)
+      end
+
+      before do
+        invoice.destroy!
+      end
+
+      it "自動マッチしないこと" do
+        results = described_class.call(tenant, batch_id, user: user)
+
+        expect(results[:auto_matched]).to eq(0)
+        expect(results[:needs_review]).to eq(0)
+        expect(results[:unmatched]).to eq(1)
+        expect(statement.reload.matched_document_id).to be_nil
       end
     end
 

@@ -6,13 +6,12 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api, ApiClientError } from "@/lib/api-client";
-import { setTokens } from "@/lib/auth";
+import { setStoredUser, setTokens } from "@/lib/auth";
 import type { SignInResponse } from "@/types/user";
 
 /** ログインフォームのバリデーションスキーマ */
@@ -31,6 +30,16 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [ipRestricted] = useState(() => {
+    if (typeof window === "undefined") return false;
+
+    const restricted = sessionStorage.getItem("ip_restricted") === "1";
+    if (restricted) {
+      sessionStorage.removeItem("ip_restricted");
+    }
+
+    return restricted;
+  });
 
   const {
     register,
@@ -51,10 +60,18 @@ export default function LoginPage() {
         auth: { email: data.email, password: data.password },
       });
       setTokens(result.tokens.access_token, result.tokens.refresh_token);
+      setStoredUser({ name: result.user.name, email: result.user.email, role: result.user.role });
       router.push("/dashboard");
     } catch (e) {
       if (e instanceof ApiClientError) {
-        setError(e.body?.error?.message ?? "ログインに失敗しました");
+        if (e.status === 403 && e.body?.error?.code === "ip_restricted") {
+          const yourIp = (e.body?.error as Record<string, unknown>)?.your_ip;
+          setError(
+            `許可されていないIPアドレスからのアクセスです。${yourIp ? `（あなたのIP: ${yourIp}）` : ""}管理者にお問い合わせください。`
+          );
+        } else {
+          setError(e.body?.error?.message ?? "ログインに失敗しました");
+        }
       } else {
         setError("通信エラーが発生しました");
       }
@@ -70,10 +87,23 @@ export default function LoginPage() {
         </p>
       </div>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        {ipRestricted && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <div className="flex gap-2">
+              <ShieldAlert className="size-4 mt-0.5 shrink-0 text-destructive" />
+              <div>
+                <p className="text-sm font-medium text-destructive">
+                  許可されていないIPアドレスからのアクセスです
+                </p>
+                <p className="mt-1 text-xs text-destructive/80">
+                  お使いのネットワークからのアクセスが制限されています。管理者にお問い合わせください。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <p className="text-sm text-destructive">{error}</p>
         )}
         <div className="space-y-2">
           <Label htmlFor="email" className="text-[15px] font-medium">
@@ -123,16 +153,13 @@ export default function LoginPage() {
           {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
           {isSubmitting ? "ログイン中..." : "ログイン"}
         </Button>
-        <p className="text-center text-[15px] text-muted-foreground">
-          アカウントをお持ちでない方は{" "}
-          <Link
-            href="/signup"
-            className="font-semibold text-primary hover:text-primary/80 transition-colors"
-          >
-            新規登録
-          </Link>
-        </p>
       </form>
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        アカウントをお持ちでない場合は{" "}
+        <Link href="/signup" className="font-medium text-primary hover:text-primary/80 transition-colors">
+          新規登録
+        </Link>
+      </p>
     </div>
   );
 }

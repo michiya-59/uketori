@@ -187,6 +187,21 @@ RSpec.describe "Api::V1::Documents", type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
     end
+
+    context "未入金の請求書を領収書に変換する場合" do
+      let!(:invoice_document) do
+        create(:document, tenant: tenant, customer: customer, created_by_user: owner,
+               document_type: "invoice", payment_status: "unpaid", remaining_amount: 10_000)
+      end
+
+      it "422エラーが返されること" do
+        post "/api/v1/documents/#{invoice_document.uuid}/convert",
+             params: { target_type: "receipt" },
+             headers: auth_headers(sales), as: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
   end
 
   describe "POST /api/v1/documents/:id/approve" do

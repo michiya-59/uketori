@@ -41,6 +41,8 @@ RSpec.describe "Api::V1::Tenants", type: :request do
         expect(t["fax"]).to eq("03-1234-5679")
         expect(t["email"]).to eq("info@test.co.jp")
         expect(t["website"]).to eq("https://test.co.jp")
+        expect(t["logo_url"]).to eq(tenant.logo_url)
+        expect(t["seal_url"]).to eq(tenant.seal_url)
       end
 
       it "インボイス情報が返されること" do
@@ -197,6 +199,39 @@ RSpec.describe "Api::V1::Tenants", type: :request do
         expect(body["tenant"]["default_tax_rate"]).to eq("8.0")
         expect(body["tenant"]["default_payment_terms_days"]).to eq(60)
         expect(body["tenant"]["fiscal_year_start_month"]).to eq(1)
+      end
+    end
+
+    context "ownerがロゴと印影を更新する場合" do
+      let(:logo_file) do
+        Rack::Test::UploadedFile.new(
+          StringIO.new("fake-logo"),
+          "image/png",
+          original_filename: "logo.png"
+        )
+      end
+      let(:seal_file) do
+        Rack::Test::UploadedFile.new(
+          StringIO.new("fake-seal"),
+          "image/png",
+          original_filename: "seal.png"
+        )
+      end
+
+      it "添付が保存されblob URLが返ること" do
+        patch "/api/v1/tenant",
+              params: { tenant: { logo: logo_file, seal: seal_file } },
+              headers: auth_headers(owner)
+
+        expect(response).to have_http_status(:ok)
+        tenant.reload
+        body = response.parsed_body
+        expect(tenant.logo).to be_attached
+        expect(tenant.seal).to be_attached
+        expect(tenant.logo_url).to start_with("blob://")
+        expect(tenant.seal_url).to start_with("blob://")
+        expect(body["tenant"]["logo_url"]).to eq(tenant.logo_url)
+        expect(body["tenant"]["seal_url"]).to eq(tenant.seal_url)
       end
     end
 

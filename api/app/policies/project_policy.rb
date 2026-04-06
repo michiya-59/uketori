@@ -3,8 +3,8 @@
 # 案件管理の認可ポリシー
 #
 # 全ロールが案件の閲覧を行える。
-# sales以上が作成・更新を行える。
-# admin以上が削除を行える。
+# デフォルト: sales以上が作成・更新、admin以上が削除。
+# カスタム権限で上書き可能。
 class ProjectPolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -20,32 +20,32 @@ class ProjectPolicy < ApplicationPolicy
     true
   end
 
-  # 作成: sales以上
+  # 作成: デフォルトsales以上
   #
   # @return [Boolean]
   def create?
-    sales_or_above?
+    check_permission("project", "create", "sales")
   end
 
-  # 更新: sales以上
+  # 更新: デフォルトsales以上
   #
   # @return [Boolean]
   def update?
-    sales_or_above?
+    check_permission("project", "update", "sales")
   end
 
-  # 削除: admin以上
+  # 削除: デフォルトadmin以上
   #
   # @return [Boolean]
   def destroy?
-    admin_or_above?
+    check_permission("project", "destroy", "admin")
   end
 
-  # ステータス変更: sales以上
+  # ステータス変更: デフォルトsales以上
   #
   # @return [Boolean]
   def status?
-    sales_or_above?
+    check_permission("project", "status", "sales")
   end
 
   # 案件の帳票一覧: 全ロール許可

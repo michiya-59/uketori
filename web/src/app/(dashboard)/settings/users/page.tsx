@@ -94,6 +94,7 @@ export default function UsersSettingsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<UserRole>("member");
   const [inviting, setInviting] = useState(false);
@@ -125,10 +126,11 @@ export default function UsersSettingsPage() {
     setInviting(true);
     try {
       await api.post("/api/v1/users/invite", {
-        invitation: { email: inviteEmail.trim(), role: inviteRole },
+        user: { name: inviteName.trim(), email: inviteEmail.trim(), role: inviteRole },
       });
       toast.success("招待メールを送信しました");
       setInviteOpen(false);
+      setInviteName("");
       setInviteEmail("");
       setInviteRole("member");
       void fetchUsers();
@@ -279,6 +281,17 @@ export default function UsersSettingsPage() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
+              <Label htmlFor="invite-name">氏名</Label>
+              <Input
+                id="invite-name"
+                type="text"
+                placeholder="山田 太郎"
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                className="mt-1.5"
+              />
+            </div>
+            <div>
               <Label htmlFor="invite-email">メールアドレス</Label>
               <Input
                 id="invite-email"
@@ -308,7 +321,7 @@ export default function UsersSettingsPage() {
             <Button variant="outline" onClick={() => setInviteOpen(false)}>
               キャンセル
             </Button>
-            <Button onClick={handleInvite} disabled={inviting || !inviteEmail.trim()}>
+            <Button onClick={handleInvite} disabled={inviting || !inviteName.trim() || !inviteEmail.trim()}>
               {inviting && <Loader2 className="size-4 animate-spin" />}
               <Mail className="size-4" />
               招待を送信

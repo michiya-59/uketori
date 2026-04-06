@@ -9,9 +9,21 @@ module Api
 
         # メールアドレスとパスワードで認証しトークンペアを返す
         #
+        # 認証成功後、ユーザーが所属するテナントにIP制限が設定されている場合、
+        # リクエスト元IPが許可リストに含まれるかチェックする。
+        #
         # @return [void]
         def create
           result = AuthService.sign_in(params.dig(:auth, :email), params.dig(:auth, :password))
+
+          # ログイン成功後にテナントのIP制限をチェック
+          # ローカルIP（::1, 127.0.0.1）の場合はスキップ
+          tenant = result[:user].tenant
+          ip = client_ip
+          if tenant.ip_restriction_enabled? && !loopback_ip?(ip) && !tenant.ip_allowed?(ip)
+            raise IpRestrictedError
+          end
+
           render json: {
             user: {
               id: result[:user].uuid,

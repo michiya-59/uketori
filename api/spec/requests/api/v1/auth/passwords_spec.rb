@@ -4,7 +4,7 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::Auth::Passwords", type: :request do
   let!(:tenant) { create(:tenant) }
-  let!(:user) { create(:user, :owner, tenant: tenant, password: "password123", password_confirmation: "password123") }
+  let!(:user) { create(:user, :owner, tenant: tenant, password: "Password123!", password_confirmation: "Password123!") }
 
   describe "POST /api/v1/auth/password/reset" do
     context "登録済みメールアドレスの場合" do
@@ -51,8 +51,8 @@ RSpec.describe "Api::V1::Auth::Passwords", type: :request do
               params: {
                 auth: {
                   token: reset_token,
-                  password: "newpassword123",
-                  password_confirmation: "newpassword123"
+                  password: "Newpassword123!",
+                  password_confirmation: "Newpassword123!"
                 }
               },
               as: :json
@@ -63,7 +63,7 @@ RSpec.describe "Api::V1::Auth::Passwords", type: :request do
 
         # 新しいパスワードでサインインできることを確認
         post "/api/v1/auth/sign_in",
-             params: { auth: { email: user.email, password: "newpassword123" } },
+             params: { auth: { email: user.email, password: "Newpassword123!" } },
              as: :json
         expect(response).to have_http_status(:ok)
       end
@@ -75,8 +75,8 @@ RSpec.describe "Api::V1::Auth::Passwords", type: :request do
               params: {
                 auth: {
                   token: reset_token,
-                  password: "newpassword123",
-                  password_confirmation: "newpassword123"
+                  password: "Newpassword123!",
+                  password_confirmation: "Newpassword123!"
                 }
               },
               as: :json
@@ -91,8 +91,8 @@ RSpec.describe "Api::V1::Auth::Passwords", type: :request do
               params: {
                 auth: {
                   token: "invalid_token",
-                  password: "newpassword123",
-                  password_confirmation: "newpassword123"
+                  password: "Newpassword123!",
+                  password_confirmation: "Newpassword123!"
                 }
               },
               as: :json
@@ -111,7 +111,7 @@ RSpec.describe "Api::V1::Auth::Passwords", type: :request do
               params: {
                 auth: {
                   token: reset_token,
-                  password: "newpassword123",
+                  password: "Newpassword123!",
                   password_confirmation: "different"
                 }
               },

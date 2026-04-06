@@ -25,6 +25,11 @@ Rails.application.routes.draw do
         post :invite, on: :collection
       end
 
+      # ロール権限設定
+      resources :role_permissions, only: %i[index update] do
+        post :reset, on: :member
+      end
+
       # 顧客
       resources :customers do
         get :documents, on: :member
@@ -115,6 +120,7 @@ Rails.application.routes.draw do
       namespace :admin do
         get "me", to: "me#show"
         resources :tenants, only: %i[index show update]
+        resources :accounts, only: %i[index create destroy]
       end
     end
   end

@@ -58,6 +58,14 @@ RSpec.describe User, type: :model do
         expect(other_user.errors[:jti]).to be_present
       end
     end
+
+    context "passwordが複雑性要件を満たさない場合" do
+      it "バリデーションエラーになること" do
+        weak_user = build(:user, tenant: tenant, password: "password123", password_confirmation: "password123")
+        expect(weak_user).not_to be_valid
+        expect(weak_user.errors[:password]).to be_present
+      end
+    end
   end
 
   describe "コールバック" do

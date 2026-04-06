@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "== Preparing database =="
+bin/rails db:prepare
+
+echo "== Starting Rails server =="
+exec bin/rails server -b 0.0.0.0

@@ -49,7 +49,55 @@ class Tenant < ApplicationRecord
 
   after_commit :enqueue_invoice_number_verification, if: :invoice_registration_number_previously_changed?
 
+  validate :validate_allowed_ip_addresses
+
+  # ActiveStorage添付を既存のURLカラム互換で返す
+  #
+  # @return [String, nil]
+  def logo_storage_url
+    attachment_storage_url(logo, logo_url)
+  end
+
+  # ActiveStorage添付を既存のURLカラム互換で返す
+  #
+  # @return [String, nil]
+  def seal_storage_url
+    attachment_storage_url(seal, seal_url)
+  end
+
+  # 指定されたIPアドレスが許可リストに含まれるか判定する
+  #
+  # IP制限が無効の場合は常にtrueを返す。
+  # 許可リストにはCIDR表記（例: 192.168.1.0/24）も使用可能。
+  #
+  # @param ip [String] 検証するIPアドレス
+  # @return [Boolean] 許可されている場合true
+  def ip_allowed?(ip)
+    return true unless ip_restriction_enabled?
+    return true if allowed_ip_addresses.blank?
+
+    client_ip = IPAddr.new(ip)
+    allowed_ip_addresses.any? do |allowed|
+      IPAddr.new(allowed).include?(client_ip)
+    end
+  rescue IPAddr::InvalidAddressError
+    false
+  end
+
   private
+
+  # 許可IPアドレスのフォーマットを検証する
+  #
+  # @return [void]
+  def validate_allowed_ip_addresses
+    return if allowed_ip_addresses.blank?
+
+    allowed_ip_addresses.each do |ip|
+      IPAddr.new(ip)
+    rescue IPAddr::InvalidAddressError
+      errors.add(:allowed_ip_addresses, "に無効なIPアドレスが含まれています: #{ip}")
+    end
+  end
 
   # 適格番号が変更された場合に検証ジョブをキューに追加する
   #
@@ -58,5 +106,14 @@ class Tenant < ApplicationRecord
     return if invoice_registration_number.blank?
 
     InvoiceNumberVerificationJob.perform_later("Tenant", id)
+  end
+
+  # @param attachment [ActiveStorage::Attached::One]
+  # @param fallback [String, nil]
+  # @return [String, nil]
+  def attachment_storage_url(attachment, fallback)
+    return "blob://#{attachment.blob.key}" if attachment.attached?
+
+    fallback
   end
 end

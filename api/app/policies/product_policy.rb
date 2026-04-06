@@ -3,7 +3,8 @@
 # 品目マスタの認可ポリシー
 #
 # 全ロールが品目を閲覧できる。
-# accountant以上が作成・更新・削除を行える。
+# デフォルト: accountant以上が作成・更新、admin以上が削除。
+# カスタム権限で上書き可能。
 class ProductPolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -19,25 +20,25 @@ class ProductPolicy < ApplicationPolicy
     true
   end
 
-  # 作成: accountant以上
+  # 作成: デフォルトaccountant以上
   #
   # @return [Boolean]
   def create?
-    accountant_or_above?
+    check_permission("product", "create", "accountant")
   end
 
-  # 更新: accountant以上
+  # 更新: デフォルトaccountant以上
   #
   # @return [Boolean]
   def update?
-    accountant_or_above?
+    check_permission("product", "update", "accountant")
   end
 
-  # 削除: admin以上
+  # 削除: デフォルトadmin以上
   #
   # @return [Boolean]
   def destroy?
-    admin_or_above?
+    check_permission("product", "destroy", "admin")
   end
 
   # 品目一覧のスコープ

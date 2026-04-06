@@ -1,8 +1,9 @@
-# ウケトリ（UKETORI）完全要件定義書 v1.1
+# ウケトリ（UKETORI）完全要件定義書 v1.2
 
-> **最終更新日:** 2026-02-25
+> **最終更新日:** 2026-04-06
 > **ドキュメントオーナー:** スズキ
 > **ステータス:** Draft
+> **v1.2 変更点:** インフラ構成をAWS Lightsail + Resendに変更。バックアップ・監視・サーバーハードニング手順を追加
 > **v1.1 変更点:** インフラ構成を極限コスト最適化（月額¥500〜3,000）に刷新
 
 ---
@@ -47,9 +48,10 @@
 ## 1.3 システム全体像
 
 ### インフラ基本方針
-- **極限コスト運用:** 初期フェーズ（0〜100ユーザー）は月額¥500〜3,000を目標
+- **極限コスト運用:** 初期フェーズ（0〜100ユーザー）は月額¥0〜1,500を目標
 - **段階的スケールアップ:** ユーザー増加に応じてインフラを拡張
-- **ポータビリティ:** PostgreSQL + S3互換APIを採用し、将来のAWS移行パスを確保
+- **AWS活用:** AWS Lightsail → EC2/ECS への自然なスケールアップパスを確保
+- **ポータビリティ:** PostgreSQL + S3互換APIを採用
 - **Redis撤廃:** SolidQueue / SolidCacheによりRedis依存を完全排除
 
 ```
@@ -62,7 +64,7 @@
 └──────────┬───────────────────────┬──────────────────────┘
            │                       │
 ┌──────────▼──────────┐ ┌─────────▼──────────────────────┐
-│ Vercel               │ │ Fly.io                          │
+│ Vercel               │ │ AWS Lightsail                    │
 │ Next.js フロントエンド│ │ Ruby on Rails API サーバー       │
 │ - SSR/SSG（LP・ヘルプ）│ │ - APIモード（Rails 7.x）         │
 │ - SPA（アプリ本体）   │ │ - JWT認証（devise-jwt）          │
@@ -70,7 +72,8 @@
 │ - shadcn/ui          │ │ - ActiveStorage（→ R2）          │
 │ Hobby→Pro ¥0〜$20   │ │ - SolidQueue（非同期ジョブ）      │
 └─────────────────────┘ │ - SolidCache（キャッシュ）        │
-                        │ shared-cpu-1x 256MB $3〜5/月     │
+                        │ - Nginx（リバースプロキシ）        │
+                        │ $10/月（最初の3ヶ月無料）          │
                         └────┬──────────┬─────────────────┘
                              │          │
               ┌──────────────┼──────────┼──────────────┐
@@ -79,7 +82,7 @@
        │Neon     │   │Cloudflare│ │Cloudflare│ │外部API      │
        │PostgreSQL│   │R2       │ │(CDN/DNS) │ │- Claude API │
        │Serverless│   │(PDF/    │ │¥0       │ │- 国税庁API  │
-       │¥0       │   │ 画像)   │ │          │ │- SendGrid   │
+       │¥0       │   │ 画像)   │ │          │ │- Resend     │
        │         │   │¥0       │ │          │ │- Stripe     │
        │+Solid   │   │S3互換API│ │          │ └─────────────┘
        │ Queue   │   └─────────┘ └──────────┘
@@ -93,24 +96,25 @@
 | サービス | 用途 | 月額 | 無料枠 |
 |---------|------|------|--------|
 | Vercel (Hobby→Pro) | Next.jsホスティング | ¥0〜$20 | Hobby無料。有償ユーザー獲得後Pro化 |
-| Fly.io (shared-cpu-1x) | Rails API + SolidQueue | $3〜5 | 一部無料枠あり |
+| AWS Lightsail ($10) | Rails API + Nginx + Docker | $10 | 最初の3ヶ月無料 |
 | Neon PostgreSQL (Free) | データベース | ¥0 | 0.5GB / 191コンピュート時間/月 |
 | Cloudflare R2 (Free) | PDF・画像保存 | ¥0 | 10GB / S3互換 / エグレス無料 |
-| Cloudflare (Free) | DNS + CDN + SSL | ¥0 | |
-| SendGrid (Free) | メール送信 | ¥0 | 月100通 |
+| Cloudflare (Free) | DNS + SSL | ¥0 | |
+| Resend (Free) | メール送信 | ¥0 | 月3,000通 |
 | Sentry (Free) | エラー監視 | ¥0 | 月5,000イベント |
+| BetterStack (Free) | 外形監視 | ¥0 | 5モニター |
 | GitHub Actions | CI/CD | ¥0 | 月2,000分 |
-| **合計** | | **¥500〜3,000** | |
+| **合計** | | **¥0〜1,500（3ヶ月目まで¥0）** | |
 
 ### スケールアップ計画
 
 | ユーザー数 | 構成変更 | 月額目安 |
 |-----------|---------|---------|
-| 0〜50 | 上記の極限構成 | ¥500〜3,000 |
-| 50〜200 | Neon Pro ($19)、Vercel Pro ($20) | ¥6,000〜10,000 |
-| 200〜500 | Fly.io 1GB RAM、Fly.io Postgres移行 | ¥10,000〜15,000 |
-| 500〜1,000 | Fly.io 2台構成、SolidQueue別プロセス化 | ¥15,000〜25,000 |
-| 1,000+ | AWS移行検討（ECS + RDS + ElastiCache） | ¥30,000〜 |
+| 0〜50 | Lightsail $10 + Neon Free + Vercel Hobby | ¥0〜1,500 |
+| 50〜200 | Lightsail $20（2GB RAM）、Neon Pro ($19)、Vercel Pro ($20) | ¥6,000〜10,000 |
+| 200〜500 | Lightsail $40（4GB RAM）、SolidQueue別プロセス化 | ¥10,000〜15,000 |
+| 500〜1,000 | EC2 + RDS + ロードバランサー | ¥20,000〜30,000 |
+| 1,000+ | ECS (Fargate) + Aurora でフルスケール | ¥50,000〜 |
 
 ---
 
@@ -914,55 +918,12 @@ importing
 ## 3.2 認証API
 
 ```
-POST   /auth/sign_up          テナント＆オーナー作成
 POST   /auth/sign_in          ログイン → JWT発行
 POST   /auth/refresh           トークンリフレッシュ
 DELETE /auth/sign_out          ログアウト（トークン無効化）
 POST   /auth/password/reset    パスワードリセット要求
 PATCH  /auth/password/update   パスワード更新
 POST   /auth/invitation/accept 招待受諾
-```
-
-### POST /auth/sign_up
-
-**リクエスト:**
-```json
-{
-  "tenant": {
-    "name": "株式会社サンプル",
-    "industry_type": "it"
-  },
-  "user": {
-    "name": "鈴木太郎",
-    "email": "suzuki@example.com",
-    "password": "SecureP@ss123"
-  }
-}
-```
-
-**バリデーション:**
-- email: メール形式、全テナント横断でユニーク
-- password: 8文字以上、英大小数字記号の各1文字以上
-- tenant.name: 1-255文字
-- tenant.industry_type: industry_templates.codeに存在すること
-
-**レスポンス (201):**
-```json
-{
-  "token": "eyJhbGciOi...",
-  "refresh_token": "abc123...",
-  "user": {
-    "uuid": "...",
-    "name": "鈴木太郎",
-    "email": "suzuki@example.com",
-    "role": "owner"
-  },
-  "tenant": {
-    "uuid": "...",
-    "name": "株式会社サンプル",
-    "plan": "free"
-  }
-}
 ```
 
 ## 3.3 顧客API
@@ -1419,31 +1380,30 @@ GET    /ai/customer_analysis/:uuid AI取引先分析
 | # | 画面名 | パス | 認証 | ロール |
 |---|--------|------|------|--------|
 | 1 | ログイン | /login | 不要 | - |
-| 2 | 新規登録 | /signup | 不要 | - |
-| 3 | パスワードリセット | /password/reset | 不要 | - |
-| 4 | ダッシュボード | /dashboard | 必要 | 全ロール |
-| 5 | **回収ダッシュボード** | /collection | 必要 | owner,admin,accountant |
-| 6 | 顧客一覧 | /customers | 必要 | 全ロール |
-| 7 | 顧客詳細 | /customers/:uuid | 必要 | 全ロール |
-| 8 | 顧客作成・編集 | /customers/:uuid/edit | 必要 | owner〜sales |
-| 9 | 案件一覧（リスト/カンバン） | /projects | 必要 | 全ロール |
-| 10 | 案件詳細 | /projects/:uuid | 必要 | 全ロール |
-| 11 | 案件作成・編集 | /projects/:uuid/edit | 必要 | owner〜sales |
-| 12 | 帳票一覧 | /documents?type=invoice | 必要 | 全ロール |
-| 13 | 帳票作成・編集 | /documents/:uuid/edit | 必要 | owner〜sales |
-| 14 | 帳票プレビュー | /documents/:uuid/preview | 必要 | 全ロール |
-| 15 | 入金一覧 | /payments | 必要 | owner,admin,accountant |
-| 16 | **銀行明細取込・AI消込** | /payments/bank-import | 必要 | owner,admin,accountant |
-| 17 | **督促管理** | /dunning | 必要 | owner,admin,accountant |
-| 18 | **売掛金年齢表** | /collection/aging | 必要 | owner,admin,accountant |
-| 19 | レポート | /reports | 必要 | owner,admin,accountant |
-| 20 | **データ移行ウィザード** | /import | 必要 | owner,admin |
-| 21 | 設定 - 自社情報 | /settings/company | 必要 | owner,admin |
-| 22 | 設定 - ユーザー管理 | /settings/users | 必要 | owner,admin |
-| 23 | 設定 - 業種テンプレート | /settings/industry | 必要 | owner,admin |
-| 24 | 設定 - 督促ルール | /settings/dunning | 必要 | owner,admin |
-| 25 | 設定 - 通知 | /settings/notifications | 必要 | 全ロール |
-| 26 | 設定 - 請求・プラン | /settings/billing | 必要 | owner |
+| 2 | パスワードリセット | /password/reset | 不要 | - |
+| 3 | ダッシュボード | /dashboard | 必要 | 全ロール |
+| 4 | **回収ダッシュボード** | /collection | 必要 | owner,admin,accountant |
+| 5 | 顧客一覧 | /customers | 必要 | 全ロール |
+| 6 | 顧客詳細 | /customers/:uuid | 必要 | 全ロール |
+| 7 | 顧客作成・編集 | /customers/:uuid/edit | 必要 | owner〜sales |
+| 8 | 案件一覧（リスト/カンバン） | /projects | 必要 | 全ロール |
+| 9 | 案件詳細 | /projects/:uuid | 必要 | 全ロール |
+| 10 | 案件作成・編集 | /projects/:uuid/edit | 必要 | owner〜sales |
+| 11 | 帳票一覧 | /documents?type=invoice | 必要 | 全ロール |
+| 12 | 帳票作成・編集 | /documents/:uuid/edit | 必要 | owner〜sales |
+| 13 | 帳票プレビュー | /documents/:uuid/preview | 必要 | 全ロール |
+| 14 | 入金一覧 | /payments | 必要 | owner,admin,accountant |
+| 15 | **銀行明細取込・AI消込** | /payments/bank-import | 必要 | owner,admin,accountant |
+| 16 | **督促管理** | /dunning | 必要 | owner,admin,accountant |
+| 17 | **売掛金年齢表** | /collection/aging | 必要 | owner,admin,accountant |
+| 18 | レポート | /reports | 必要 | owner,admin,accountant |
+| 19 | **データ移行ウィザード** | /import | 必要 | owner,admin |
+| 20 | 設定 - 自社情報 | /settings/company | 必要 | owner,admin |
+| 21 | 設定 - ユーザー管理 | /settings/users | 必要 | owner,admin |
+| 22 | 設定 - 業種テンプレート | /settings/industry | 必要 | owner,admin |
+| 23 | 設定 - 督促ルール | /settings/dunning | 必要 | owner,admin |
+| 24 | 設定 - 通知 | /settings/notifications | 必要 | 全ロール |
+| 25 | 設定 - 請求・プラン | /settings/billing | 必要 | owner |
 
 ## 4.2 主要画面の詳細仕様
 
@@ -1750,10 +1710,10 @@ volumes:
 |------|---------|-------------------|
 | PostgreSQL | Docker (`postgres:16-alpine`) | Neon PostgreSQL (Serverless) |
 | S3互換ストレージ | MinIO (Docker) | Cloudflare R2 |
-| Rails API | Docker (`Dockerfile.dev`) | Fly.io |
+| Rails API | Docker (`Dockerfile.dev`) | AWS Lightsail（Docker + Nginx） |
 | Next.js | Docker (`Dockerfile.dev`) | Vercel |
 | Redis | **不要**（SolidQueue/SolidCacheのため） | **不要** |
-| SolidQueue | Puma内蔵モード（api コンテナ内） | Puma内蔵モード（Fly.io） |
+| SolidQueue | Puma内蔵モード（api コンテナ内） | Puma内蔵モード（Lightsail） |
 
 ### 5.0.3 開発用Dockerfile
 
@@ -1789,12 +1749,12 @@ CMD ["npm", "run", "dev"]
 
 | 環境 | 開発 | 本番（Phase 1） | 切替に必要な作業 |
 |------|------|----------------|----------------|
-| Rails API | Docker | **Fly.io** ($3〜5/月) | `fly deploy`（Dockerfile共用） |
+| Rails API | Docker | **AWS Lightsail** ($10/月、3ヶ月無料) | Docker + Nginx構成 |
 | Next.js | Docker | **Vercel** (¥0〜$20/月) | git push（自動デプロイ） |
 | PostgreSQL | Docker postgres:16 | **Neon** (¥0) | DATABASE_URL差替のみ |
 | ファイルストレージ | MinIO (Docker) | **Cloudflare R2** (¥0) | endpoint/key差替のみ（S3互換） |
-| DNS/SSL/CDN | — | **Cloudflare** (¥0) | ドメイン設定のみ |
-| メール | MailHog or letter_opener | **SendGrid** (¥0) | API key設定 |
+| DNS/SSL | — | **Cloudflare + Let's Encrypt** (¥0) | ドメイン設定 + certbot |
+| メール | MailHog or letter_opener | **Resend** (¥0) | API key設定 |
 | 監視 | — | **Sentry + BetterStack** (¥0) | DSN設定 |
 
 **重要設計原則: 開発↔本番の差異は環境変数のみ**
@@ -1809,7 +1769,7 @@ CMD ["npm", "run", "dev"]
 
 ActiveStorage の S3 互換設定は開発・本番で同一。endpoint と認証情報を環境変数で切り替えるだけで動作する。
 
-### 5.0.5 本番用Dockerfile（Fly.io用）
+### 5.0.5 本番用Dockerfile（Lightsail / Docker用）
 
 ```dockerfile
 # api/Dockerfile
@@ -1882,12 +1842,19 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
-        working-directory: api
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Deploy to Lightsail via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ubuntu
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script: |
+            cd /home/ubuntu/uketori
+            git pull origin main
+            docker compose -f docker-compose.production.yml build
+            docker compose -f docker-compose.production.yml run --rm -e RAILS_ENV=production api bin/rails db:migrate
+            docker compose -f docker-compose.production.yml up -d
+            docker image prune -f
 
   # Vercelはgit push で自動デプロイのため、ジョブ不要
   # （Vercel GitHub Integration を有効化しておく）
@@ -1898,10 +1865,9 @@ jobs:
 ```
 uketori/
 ├── api/                          # Rails API（バックエンド）
-│   ├── Dockerfile                # 本番用（Fly.io デプロイ）
+│   ├── Dockerfile                # 本番用（Lightsail Docker デプロイ）
 │   ├── Dockerfile.dev            # 開発用（Docker Compose）
 │   ├── Gemfile
-│   ├── fly.toml                  # Fly.io設定
 │   ├── app/
 │   ├── config/
 │   │   ├── database.yml
@@ -1972,27 +1938,27 @@ uketori/
 | 項目 | 仕様 |
 |------|------|
 | SLA目標 | Phase 1: 99.5% → Phase 2以降: 99.9% |
-| バックアップ | Neon自動バックアップ（7日保持）+ GitHub Actions pg_dump（週次・R2保存） |
-| デプロイ | GitHub Actions → Fly.io deploy（ローリングデプロイ） |
+| バックアップ | Neon自動バックアップ（7日保持）+ cronによるpg_dump（日次・ローカル30日保持） |
+| デプロイ | GitHub Actions → SSH → Docker Compose（Lightsail） |
 | フロントデプロイ | GitHub Actions → Vercel（git push自動デプロイ） |
-| 監視 | Sentry（エラー追跡）+ BetterStack（外形監視）+ Fly.io Metrics |
-| ログ | Fly.io Logs（stdout/stderr）+ Sentry breadcrumbs |
-| スケーリング | Phase 1: 手動（`fly scale count`）→ Phase 2: Fly.io Autoscale |
+| 監視 | Sentry（エラー追跡）+ BetterStack（外形監視） |
+| ログ | Docker json-file ログ（ローテーション設定済み）+ Sentry breadcrumbs |
+| スケーリング | Phase 1: Lightsail プラン変更 → Phase 2: EC2/ECS移行 |
 
 ### インフラ構成詳細
 
 | レイヤー | サービス | プラン | 費用 | 備考 |
 |---------|---------|--------|------|------|
-| DNS/CDN/SSL | Cloudflare | Free | ¥0 | DDoS防御・キャッシュ込み |
+| DNS/SSL | Cloudflare + Let's Encrypt | Free | ¥0 | DNS管理 + 無料SSL証明書 |
 | フロントエンド | Vercel | Hobby → Pro | ¥0 → $20 | Next.js SSR/SSG |
-| APIサーバー | Fly.io | shared-cpu-1x 256MB | $3〜5/月 | Rails API + SolidQueue in-process |
+| APIサーバー | AWS Lightsail | $10（1GB RAM, 1vCPU） | $10/月 | Docker + Nginx + Rails。3ヶ月無料 |
 | データベース | Neon PostgreSQL | Free → Pro | ¥0 → $19 | Serverless PostgreSQL。0.5GB無料 |
 | ファイルストレージ | Cloudflare R2 | Free | ¥0 | 10GB無料。S3互換API |
-| メール送信 | SendGrid | Free → Essentials | ¥0 → $20 | 月100通無料 |
+| メール送信 | Resend | Free → Pro | ¥0 → $20 | 月3,000通無料 |
 | エラー監視 | Sentry | Free | ¥0 | 月5,000イベント |
 | 外形監視 | BetterStack (旧Better Uptime) | Free | ¥0 | 5モニター無料 |
 | CI/CD | GitHub Actions | Free | ¥0 | 月2,000分 |
-| **合計（Phase 1）** | | | **¥500〜3,000/月** | |
+| **合計（Phase 1）** | | | **¥0〜1,500/月（3ヶ月無料）** | |
 
 ### ジョブ基盤: SolidQueue
 
@@ -2016,7 +1982,7 @@ production:
       batch_size: 500
   workers:
     - queues: "*"
-      threads: 3         # Fly.io 256MBに合わせてスレッド数を制限
+      threads: 3         # Lightsail 1GBに合わせてスレッド数を制限
       processes: 1
       polling_interval: 0.1
 ```
@@ -2026,8 +1992,8 @@ production:
 | Phase | 実行モード | 説明 |
 |-------|-----------|------|
 | Phase 1 (0〜100ユーザー) | **in-process（puma内蔵）** | Railsプロセス内でワーカーを実行。別プロセス不要でコスト最小 |
-| Phase 2 (100〜500ユーザー) | **separate process** | `bin/jobs` で別プロセス起動。Fly.io Machine追加（+$5/月） |
-| Phase 3 (500+) | **multi-process** | 複数ワーカープロセス。AWS移行も検討 |
+| Phase 2 (100〜500ユーザー) | **separate process** | `bin/jobs` で別プロセス起動。Lightsailプラン拡張 |
+| Phase 3 (500+) | **multi-process** | EC2/ECS移行。複数ワーカープロセス |
 
 ```ruby
 # config/puma.rb（Phase 1: in-process mode）
@@ -2062,7 +2028,7 @@ cloudflare_r2:
 config.active_storage.service = :cloudflare_r2
 ```
 
-### Fly.ioメモリ最適化
+### Docker メモリ最適化（Lightsail用）
 
 ```dockerfile
 # Dockerfile
@@ -2096,7 +2062,7 @@ ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 | 週 | 開発内容 | 完了条件 |
 |----|---------|---------|
 | 1 | 環境構築・DB設計・API設計 | Rails + Next.js + Neon PostgreSQL + Cloudflare R2 が起動。全テーブルのマイグレーション完了。SolidQueue動作確認 |
-| 2 | 認証・テナント・ユーザー管理 | 新規登録→ログイン→JWT発行→認可が動作 |
+| 2 | 認証・テナント・ユーザー管理 | 管理者発行アカウントでログイン→JWT発行→認可が動作 |
 | 3 | 自社情報設定・業種テンプレート | テナント設定画面。業種選択で用語・品目が切り替わる |
 | 4 | 顧客マスタ管理（CRUD + 適格番号検証） | 顧客一覧・作成・編集・削除。国税庁API連携 |
 | 5 | 品目マスタ + 見積書作成・編集 | 見積書の明細入力。金額自動計算（税率別集計） |
@@ -2341,8 +2307,8 @@ R2_BUCKET=uketori-production
 # AI
 ANTHROPIC_API_KEY=xxx
 
-# メール
-SENDGRID_API_KEY=xxx
+# メール（Resend SMTP）
+RESEND_API_KEY=xxx
 MAILER_FROM=noreply@uketori.jp
 
 # Stripe
@@ -2358,10 +2324,8 @@ NTA_APP_ID=xxx
 # Sentry
 SENTRY_DSN=xxx
 
-# Fly.io（自動設定される環境変数）
-# FLY_APP_NAME=uketori-api
-# FLY_REGION=nrt（東京）
-# PORT=8080
+# AWS Lightsail
+# PORT=8080（docker-compose.production.yml で設定）
 ```
 
 # 付録B: 初期データ（Seeds）
@@ -2520,17 +2484,18 @@ DunningRule.create!([
 
 # 付録C: v1.0 → v1.1 変更差分サマリー
 
-| 項目 | v1.0 | v1.1 | 影響範囲 |
+| 項目 | v1.0 | v1.1 → v1.2 | 影響範囲 |
 |------|------|------|---------|
 | ジョブキュー | Sidekiq + Redis | **SolidQueue（PostgreSQL-backed）** | Gemfile, config, デプロイ |
 | キャッシュ | Redis | **SolidCache（PostgreSQL-backed）** | Gemfile, config |
 | データベース | RDS PostgreSQL | **Neon PostgreSQL（Serverless）** | DATABASE_URL, 接続設定 |
 | ファイルストレージ | AWS S3 | **Cloudflare R2（S3互換）** | storage.yml, 環境変数 |
-| CDN/SSL | CloudFront + ACM | **Cloudflare（Free）** | DNS設定 |
-| APIサーバー | ECS Fargate | **Fly.io** | Dockerfile, デプロイスクリプト |
+| CDN/SSL | CloudFront + ACM | **Cloudflare DNS + Let's Encrypt** | DNS設定, certbot |
+| APIサーバー | ECS Fargate | **AWS Lightsail（Docker + Nginx）** | Dockerfile, docker-compose, Nginx |
 | フロントエンド | ECS Fargate | **Vercel** | vercel.json, デプロイ |
-| デプロイ | ECR → ECS Blue/Green | **GitHub Actions → Fly.io / Vercel** | CI/CDパイプライン |
-| 監視 | CloudWatch + Sentry | **Fly.io Metrics + Sentry + BetterStack** | 監視設定 |
-| 月額コスト | ¥15,000〜40,000 | **¥500〜3,000** | — |
+| デプロイ | ECR → ECS Blue/Green | **GitHub Actions → SSH → Docker Compose** | CI/CDパイプライン |
+| 監視 | CloudWatch + Sentry | **Sentry + BetterStack** | 監視設定 |
+| メール | SendGrid | **Resend（SMTP）** | メール設定 |
+| 月額コスト | ¥15,000〜40,000 | **¥0〜1,500（3ヶ月無料）** | — |
 | AI消込モデル | Claude Sonnet（全タスク） | **タスク別にSonnet/Haiku使い分け** | API呼び出し設定 |
 | SLA目標 | 99.9% | **Phase 1: 99.5% → Phase 2: 99.9%** | 運用設計 |

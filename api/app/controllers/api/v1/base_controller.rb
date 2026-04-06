@@ -7,6 +7,7 @@ module Api
     # 認証を要求し、テナントスコープの適用とページネーションのヘルパーを提供する。
     class BaseController < ApplicationController
       before_action :authenticate_user!
+      before_action :enforce_ip_restriction!
 
       private
 

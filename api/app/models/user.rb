@@ -23,10 +23,13 @@ class User < ApplicationRecord
   # 利用可能なロール一覧（権限の高い順）
   ROLES = %w[owner admin accountant sales member].freeze
 
-  validates :email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
+  validates :email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP },
+                   uniqueness: { scope: :tenant_id, conditions: -> { where(deleted_at: nil) },
+                                 message: "は既に使用されています" }
   validates :name, presence: true, length: { maximum: 100 }
   validates :role, inclusion: { in: ROLES }
   validates :jti, presence: true, uniqueness: true
+  validate :validate_password_complexity
 
   before_validation -> { self.jti ||= SecureRandom.uuid }, on: :create
 
@@ -94,5 +97,15 @@ class User < ApplicationRecord
     return false if user_index.nil?
 
     user_index <= min_index
+  end
+
+  private
+
+  def validate_password_complexity
+    return if password.blank?
+
+    return if password.match?(/\A(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}\z/)
+
+    errors.add(:password, "は8文字以上で、英大文字・英小文字・数字・記号を各1文字以上含めてください")
   end
 end

@@ -19,6 +19,8 @@ class ImportJob < ApplicationRecord
   include TenantScoped
   include UuidFindable
 
+  has_one_attached :source_file
+
   belongs_to :tenant
   belongs_to :user
 
@@ -33,4 +35,13 @@ class ImportJob < ApplicationRecord
   validates :file_url, presence: true
   validates :file_name, presence: true
   validates :file_size, presence: true, numericality: { greater_than: 0 }
+
+  # ActiveStorageのblobキーを既存のfile_url形式に合わせて返す
+  #
+  # @return [String]
+  def source_file_url
+    return "blob://#{source_file.blob.key}" if source_file.attached?
+
+    file_url
+  end
 end

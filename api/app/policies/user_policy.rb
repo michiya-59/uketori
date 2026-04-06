@@ -2,9 +2,10 @@
 
 # ユーザー管理の認可ポリシー
 #
-# owner/adminのみがユーザーの作成・更新・削除を行える。
+# デフォルト: admin以上がユーザーの作成・更新・削除を行える。
 # 全ロールがユーザー一覧・詳細を閲覧できる。
-# ownerは自身を削除できない。
+# ownerは自身を削除できない。ownerのロール変更はownerのみ。
+# カスタム権限で上書き可能（ビジネスロジック制約は維持）。
 class UserPolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -20,39 +21,37 @@ class UserPolicy < ApplicationPolicy
     true
   end
 
-  # 作成（招待）: admin以上
+  # 作成（招待）: デフォルトadmin以上
   #
   # @return [Boolean]
   def create?
-    admin_or_above?
+    check_permission("user", "create", "admin")
   end
 
-  # 招待: admin以上
+  # 招待: デフォルトadmin以上
   #
   # @return [Boolean]
   def invite?
-    admin_or_above?
+    check_permission("user", "invite", "admin")
   end
 
-  # 更新: admin以上（ただしownerのロール変更は不可）
+  # 更新: デフォルトadmin以上（ただしownerのロール変更は不可）
   #
   # @return [Boolean]
   def update?
-    return false unless admin_or_above?
     return false if record.owner? && !user.owner?
 
-    true
+    check_permission("user", "update", "admin")
   end
 
-  # 削除: admin以上（自分自身とownerは削除不可）
+  # 削除: デフォルトadmin以上（自分自身とownerは削除不可）
   #
   # @return [Boolean]
   def destroy?
-    return false unless admin_or_above?
     return false if record.id == user.id
     return false if record.owner?
 
-    true
+    check_permission("user", "destroy", "admin")
   end
 
   # ユーザー一覧のスコープ

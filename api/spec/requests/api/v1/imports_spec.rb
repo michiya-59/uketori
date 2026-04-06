@@ -21,11 +21,16 @@ RSpec.describe "Api::V1::Imports", type: :request do
           post "/api/v1/imports", params: { file: csv_file, source_type: "csv_generic" },
                headers: auth_headers(owner)
         }.to change(ImportJob, :count).by(1)
+          .and change(ActiveStorage::Blob, :count).by(1)
 
         expect(response).to have_http_status(:created)
         body = response.parsed_body
+        import_job = ImportJob.order(:id).last
         expect(body["import_job"]["status"]).to eq("mapping")
         expect(body["import_job"]["column_mapping"]).to be_present
+        expect(body["import_job"]["file_url"]).to start_with("blob://")
+        expect(import_job.source_file).to be_attached
+        expect(import_job.file_url).to start_with("blob://")
       end
 
       it "AIマッピングが実行されること" do

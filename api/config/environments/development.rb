@@ -15,7 +15,7 @@ Rails.application.configure do
   config.cache_store = :memory_store
 
   # ActiveStorage: S3互換 (MinIO)
-  config.active_storage.service = :amazon
+  config.active_storage.service = ENV.fetch("ACTIVE_STORAGE_SERVICE", "amazon").to_sym
 
   # ActionMailer: Mailpit（SMTP経由、ブラウザで確認可能）
   config.action_mailer.delivery_method = :smtp

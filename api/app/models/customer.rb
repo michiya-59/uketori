@@ -34,15 +34,20 @@ class Customer < ApplicationRecord
   validates :credit_score, numericality: { in: 0..100 }, allow_nil: true
 
   # @!method self.search_by_name(query)
-  #   会社名で部分一致検索するスコープ
+  #   会社名・会社名カナで部分一致検索するスコープ
   #   @param query [String] 検索クエリ文字列
   #   @return [ActiveRecord::Relation] 会社名が一致するレコード
-  scope :search_by_name, ->(query) { where("company_name LIKE ?", "%#{sanitize_sql_like(query)}%") }
+  scope :search_by_name, lambda { |query|
+    escaped = "%#{sanitize_sql_like(query)}%"
+    where("company_name LIKE :query OR company_name_kana LIKE :query", query: escaped)
+  }
 
   # @!method self.with_overdue
   #   支払い期限超過の請求を持つ顧客を取得するスコープ
   #   @return [ActiveRecord::Relation] 未払いの請求がある顧客
   scope :with_overdue, -> { where(has_overdue: true) }
+  scope :with_any_tags, ->(tags) { where("tags ?| array[:tags]", tags: tags) }
+  scope :with_outstanding_at_least, ->(amount) { where("total_outstanding >= ?", amount) }
 
   # @!method self.high_risk(threshold)
   #   信用スコアが閾値以下の高リスク顧客を取得するスコープ

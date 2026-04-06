@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_03_10_143554) do
+ActiveRecord::Schema[8.0].define(version: 2026_03_25_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -576,6 +576,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_143554) do
     t.datetime "updated_at", null: false
     t.datetime "deleted_at"
     t.boolean "import_enabled", default: false, null: false
+    t.boolean "ip_restriction_enabled", default: false, null: false
+    t.text "allowed_ip_addresses", default: [], null: false, array: true
     t.index ["deleted_at"], name: "index_tenants_on_deleted_at"
     t.index ["stripe_customer_id"], name: "index_tenants_on_stripe_customer_id"
     t.index ["uuid"], name: "index_tenants_on_uuid", unique: true
@@ -602,6 +604,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_03_10_143554) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "deleted_at"
+    t.boolean "system_admin", default: false, null: false
     t.index ["invitation_token"], name: "index_users_on_invitation_token", unique: true
     t.index ["jti"], name: "index_users_on_jti", unique: true
     t.index ["tenant_id", "email"], name: "index_users_on_tenant_id_and_email", unique: true, where: "(deleted_at IS NULL)"

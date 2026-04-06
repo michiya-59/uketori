@@ -15,17 +15,22 @@ class AuthService
   }.freeze
 
   class << self
-    # @param params [Hash] :tenant_name, :industry_code, :name, :email, :password, :password_confirmation
+    # @param params [Hash] :tenant_name, :industry_code, :name, :email, :password, :password_confirmation, :plan
     # @return [Hash] { user:, tenant:, tokens: }
     # @raise [RegistrationError] バリデーションエラー時
     def sign_up(params)
-      ActiveRecord::Base.transaction do
-        industry = IndustryTemplate.find_by(code: params[:industry_code]) || IndustryTemplate.find_by!(code: "general")
+      if User.where(email: params[:email], deleted_at: nil).exists?
+        raise RegistrationError, "このメールアドレスは既に使用されています"
+      end
 
+      ActiveRecord::Base.transaction do
+        industry = IndustryTemplate.find_by!(code: params[:industry_code])
+
+        plan = params[:plan].presence || "free"
         tenant = Tenant.create!(
           name: params[:tenant_name],
           industry_type: industry.code,
-          plan: "free"
+          plan: plan
         )
 
         user = User.create!(
@@ -44,6 +49,8 @@ class AuthService
 
         { user: user, tenant: tenant, tokens: tokens }
       end
+    rescue ActiveRecord::RecordNotFound
+      raise RegistrationError, "industry_typeが不正です"
     rescue ActiveRecord::RecordInvalid => e
       raise RegistrationError, e.record.errors.full_messages.join(", ")
     end
@@ -109,6 +116,10 @@ class AuthService
     # @raise [RegistrationError]
     # @raise [PlanLimitError] プランのユーザー数上限に達している場合
     def invite_user(inviter, params)
+      if User.where(email: params[:email], deleted_at: nil).exists?
+        raise RegistrationError, "このメールアドレスは既に使用されています"
+      end
+
       tenant = inviter.tenant
       enforce_plan_user_limit!(tenant)
 
@@ -118,7 +129,7 @@ class AuthService
         email: params[:email],
         name: params[:name],
         role: params[:role] || "member",
-        password: SecureRandom.hex(16),  # temporary password
+        password: "TempPass123!",
         invitation_token: token,
         invitation_sent_at: Time.current
       )

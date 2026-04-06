@@ -25,20 +25,20 @@ module Api
         end
 
         source_type = params[:source_type] || detect_source_type(file)
-
-        # ファイルをR2/MinIOにアップロード（MVP: ローカル解析のみ）
         csv_data = file.read
         parsed = parse_file(csv_data, file.original_filename)
+        source_blob = create_source_blob(csv_data, file)
 
         import_job = current_tenant.import_jobs.create!(
           user: current_user,
           source_type: source_type,
           status: "mapping",
-          file_url: "local://#{SecureRandom.hex(16)}",
+          file_url: "blob://#{source_blob.key}",
           file_name: file.original_filename,
           file_size: csv_data.bytesize,
           parsed_data: parsed
         )
+        import_job.source_file.attach(source_blob)
 
         # AIカラムマッピング実行
         mapping_result = AiColumnMapper.call(parsed["headers"], source_type)
@@ -222,6 +222,19 @@ module Api
         data.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")
       end
 
+      # 元ファイルをActiveStorageへ保存する
+      #
+      # @param data [String]
+      # @param file [ActionDispatch::Http::UploadedFile]
+      # @return [ActiveStorage::Blob]
+      def create_source_blob(data, file)
+        ActiveStorage::Blob.create_and_upload!(
+          io: StringIO.new(data),
+          filename: file.original_filename,
+          content_type: file.content_type.presence || "application/octet-stream"
+        )
+      end
+
       # インポートジョブをシリアライズする
       #
       # @param job [ImportJob]
@@ -231,6 +244,7 @@ module Api
           uuid: job.uuid,
           source_type: job.source_type,
           status: job.status,
+          file_url: job.source_file_url,
           file_name: job.file_name,
           file_size: job.file_size,
           column_mapping: job.column_mapping,

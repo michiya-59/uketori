@@ -39,7 +39,7 @@ class ApiClient {
    * @param baseUrl - APIのベースURL（デフォルト: NEXT_PUBLIC_API_URL環境変数）
    */
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000'
+    this.baseUrl = baseUrl ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4100'
   }
 
   /**
@@ -178,6 +178,33 @@ class ApiClient {
           options.body instanceof FormData ? null : 'application/json'
         ),
       }))
+    }
+
+    // IP制限エラー: ログイン済みセッションの場合のみ強制ログアウト
+    if (response.status === 403) {
+      let body: ApiError | null = null
+      try {
+        body = (await response.json()) as ApiError
+      } catch {
+        // JSONパース失敗時はnull
+      }
+
+      if (body?.error?.code === 'ip_restricted') {
+        // トークンがある = ログイン済みセッション中にIPが変わった場合のみ強制リダイレクト
+        // トークンがない = ログイン試行時なので、呼び出し元（ログインページ）に処理を委譲する
+        if (getToken()) {
+          clearTokens()
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('ip_restricted', '1')
+            window.location.href = '/login'
+          }
+        }
+        throw new ApiClientError(
+          body.error.message ?? '許可されていないIPアドレスからのアクセスです',
+          403,
+          body
+        )
+      }
     }
 
     if (!response.ok) {

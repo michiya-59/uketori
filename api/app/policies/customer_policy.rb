@@ -3,8 +3,8 @@
 # 顧客管理の認可ポリシー
 #
 # 全ロールが顧客の閲覧を行える。
-# sales以上が作成・更新を行える。
-# admin以上が削除を行える。
+# デフォルト: sales以上が作成・更新、admin以上が削除。
+# カスタム権限で上書き可能。
 class CustomerPolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -20,25 +20,25 @@ class CustomerPolicy < ApplicationPolicy
     true
   end
 
-  # 作成: sales以上
+  # 作成: デフォルトsales以上
   #
   # @return [Boolean]
   def create?
-    sales_or_above?
+    check_permission("customer", "create", "sales")
   end
 
-  # 更新: sales以上
+  # 更新: デフォルトsales以上
   #
   # @return [Boolean]
   def update?
-    sales_or_above?
+    check_permission("customer", "update", "sales")
   end
 
-  # 削除: admin以上
+  # 削除: デフォルトadmin以上
   #
   # @return [Boolean]
   def destroy?
-    admin_or_above?
+    check_permission("customer", "destroy", "admin")
   end
 
   # 顧客の帳票一覧表示: 全ロール許可
@@ -48,18 +48,18 @@ class CustomerPolicy < ApplicationPolicy
     true
   end
 
-  # 顧客の信用履歴表示: accountant以上
+  # 顧客の信用履歴表示: デフォルトaccountant以上
   #
   # @return [Boolean]
   def credit_history?
-    accountant_or_above?
+    check_permission("customer", "credit_history", "accountant")
   end
 
-  # インボイス番号検証: sales以上
+  # インボイス番号検証: デフォルトsales以上
   #
   # @return [Boolean]
   def verify_invoice_number?
-    sales_or_above?
+    check_permission("customer", "verify_invoice_number", "sales")
   end
 
   # 顧客一覧のスコープ

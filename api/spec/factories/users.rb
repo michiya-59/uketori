@@ -5,8 +5,8 @@ FactoryBot.define do
     tenant
     sequence(:name) { |n| "テストユーザー#{n}" }
     sequence(:email) { |n| "user#{n}@example.com" }
-    password { "password123" }
-    password_confirmation { "password123" }
+    password { "Password123!" }
+    password_confirmation { "Password123!" }
     role { "member" }
 
     trait :owner do

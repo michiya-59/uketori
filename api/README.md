@@ -1,24 +1,38 @@
-# README
+# API Development
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+## Local startup
 
-Things you may want to cover:
+This app expects Ruby `3.3.x`. The repository already declares `ruby-3.3.0` in
+[.ruby-version](/Users/e0195/重要/uketori-pj/uketori/api/.ruby-version), and the
+current local setup works with `mise`.
 
-* Ruby version
+Recommended commands:
 
-* System dependencies
+```bash
+cd api
+bin/dev
+```
 
-* Configuration
+`bin/dev` prefers `mise exec` automatically when `mise` is installed, so it can
+start with the project Ruby even if your shell is still pointing at the system
+Ruby.
 
-* Database creation
+If you want to fix your shell itself, add `mise` activation to `~/.zshrc`:
 
-* Database initialization
+```bash
+eval "$(mise activate zsh)"
+```
 
-* How to run the test suite
+Then restart the shell and verify:
 
-* Services (job queues, cache servers, search engines, etc.)
+```bash
+ruby -v
+bundle -v
+```
 
-* Deployment instructions
+Expected versions:
 
-* ...
+```text
+ruby 3.3.x
+Bundler version 2.5.22
+```

@@ -3,8 +3,8 @@
 # 督促ルールの認可ポリシー
 #
 # 全ロールが督促ルールを閲覧できる。
-# accountant以上がルールの作成・更新を行える。
-# admin以上がルールの削除を行える。
+# デフォルト: accountant以上が作成・更新・実行、admin以上が削除。
+# カスタム権限で上書き可能。
 class DunningRulePolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -20,32 +20,32 @@ class DunningRulePolicy < ApplicationPolicy
     true
   end
 
-  # 作成: accountant以上
+  # 作成: デフォルトaccountant以上
   #
   # @return [Boolean]
   def create?
-    accountant_or_above?
+    check_permission("dunning_rule", "create", "accountant")
   end
 
-  # 更新: accountant以上
+  # 更新: デフォルトaccountant以上
   #
   # @return [Boolean]
   def update?
-    accountant_or_above?
+    check_permission("dunning_rule", "update", "accountant")
   end
 
-  # 削除: admin以上
+  # 削除: デフォルトadmin以上
   #
   # @return [Boolean]
   def destroy?
-    admin_or_above?
+    check_permission("dunning_rule", "destroy", "admin")
   end
 
-  # 督促実行: accountant以上
+  # 督促実行: デフォルトaccountant以上
   #
   # @return [Boolean]
   def execute?
-    accountant_or_above?
+    check_permission("dunning_rule", "execute", "accountant")
   end
 
   # 督促ルール一覧のスコープ

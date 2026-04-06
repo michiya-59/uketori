@@ -3,8 +3,36 @@
 require "rails_helper"
 
 RSpec.describe AuthService do
+  let!(:industry_template) { create(:industry_template, code: "general", name: "汎用") }
   let!(:tenant) { create(:tenant, plan: "free") }
   let!(:owner_user) { create(:user, :owner, tenant: tenant) }
+
+  describe ".sign_up" do
+    let(:valid_params) do
+      {
+        tenant_name: "新規会社",
+        industry_code: "general",
+        name: "オーナー",
+        email: "owner@example.com",
+        password: "Password123!",
+        password_confirmation: "Password123!"
+      }
+    end
+
+    it "テナントとオーナーユーザーとトークンを作成すること" do
+      result = described_class.sign_up(valid_params)
+
+      expect(result[:tenant].name).to eq("新規会社")
+      expect(result[:user].role).to eq("owner")
+      expect(result[:tokens][:access_token]).to be_present
+    end
+
+    it "存在しない業種コードではRegistrationErrorになること" do
+      expect {
+        described_class.sign_up(valid_params.merge(industry_code: "missing"))
+      }.to raise_error(AuthService::RegistrationError, /industry_typeが不正/)
+    end
+  end
 
   describe ".invite_user" do
     context "プラン上限に達していない場合" do
@@ -134,13 +162,13 @@ RSpec.describe AuthService do
 
     context "有効なトークンの場合" do
       it "パスワードが更新されること" do
-        described_class.reset_password(reset_token, "newpass123", "newpass123")
-        expect(owner_user.reload.authenticate("newpass123")).to be_truthy
+        described_class.reset_password(reset_token, "Newpass123!", "Newpass123!")
+        expect(owner_user.reload.authenticate("Newpass123!")).to be_truthy
       end
 
       it "JWTが無効化されること" do
         old_jti = owner_user.jti
-        described_class.reset_password(reset_token, "newpass123", "newpass123")
+        described_class.reset_password(reset_token, "Newpass123!", "Newpass123!")
         expect(owner_user.reload.jti).not_to eq(old_jti)
       end
     end
@@ -148,7 +176,7 @@ RSpec.describe AuthService do
     context "無効なトークンの場合" do
       it "AuthenticationErrorが発生すること" do
         expect {
-          described_class.reset_password("invalid", "newpass123", "newpass123")
+          described_class.reset_password("invalid", "Newpass123!", "Newpass123!")
         }.to raise_error(AuthService::AuthenticationError, /無効なリセットトークン/)
       end
     end
@@ -166,7 +194,7 @@ RSpec.describe AuthService do
       it "パスワードが設定されトークンが返されること" do
         result = described_class.accept_invitation(
           invited_user.invitation_token,
-          { password: "newpass123", password_confirmation: "newpass123" }
+          { password: "Newpass123!", password_confirmation: "Newpass123!" }
         )
         expect(result[:user]).to eq(invited_user)
         expect(result[:tokens][:access_token]).to be_present
@@ -175,7 +203,7 @@ RSpec.describe AuthService do
       it "招待トークンがクリアされること" do
         described_class.accept_invitation(
           invited_user.invitation_token,
-          { password: "newpass123", password_confirmation: "newpass123" }
+          { password: "Newpass123!", password_confirmation: "Newpass123!" }
         )
         expect(invited_user.reload.invitation_token).to be_nil
         expect(invited_user.invitation_accepted_at).to be_present
@@ -187,7 +215,7 @@ RSpec.describe AuthService do
         expect {
           described_class.accept_invitation(
             "invalid_token",
-            { password: "newpass123", password_confirmation: "newpass123" }
+            { password: "Newpass123!", password_confirmation: "Newpass123!" }
           )
         }.to raise_error(AuthService::AuthenticationError, /無効な招待トークン/)
       end

@@ -30,6 +30,8 @@ export interface Tenant {
   default_payment_terms_days: number
   default_tax_rate: number
   dunning_enabled: boolean
+  ip_restriction_enabled: boolean
+  allowed_ip_addresses: string[]
   import_enabled: boolean
   timezone: string
 }

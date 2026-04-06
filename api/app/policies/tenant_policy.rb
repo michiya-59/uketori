@@ -3,7 +3,8 @@
 # テナント設定の認可ポリシー
 #
 # 全ロールがテナント情報を閲覧できる。
-# owner/adminのみがテナント設定を更新できる。
+# デフォルト: admin以上がテナント設定を更新できる。
+# カスタム権限で上書き可能。
 class TenantPolicy < ApplicationPolicy
   # 詳細表示: 全ロール許可
   #
@@ -12,10 +13,10 @@ class TenantPolicy < ApplicationPolicy
     true
   end
 
-  # 更新: admin以上
+  # 更新: デフォルトadmin以上
   #
   # @return [Boolean]
   def update?
-    admin_or_above?
+    check_permission("tenant", "update", "admin")
   end
 end

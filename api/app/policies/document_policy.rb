@@ -3,9 +3,8 @@
 # 帳票の認可ポリシー
 #
 # 全ロールが帳票の閲覧を行える。
-# sales以上が作成・更新・複製・変換を行える。
-# accountant以上が承認・却下・ロックを行える。
-# admin以上が削除を行える。
+# デフォルト: sales以上が作成・更新・複製・変換、accountant以上が承認・却下・ロック。
+# カスタム権限で上書き可能。
 class DocumentPolicy < ApplicationPolicy
   # 一覧表示: 全ロール許可
   #
@@ -21,67 +20,67 @@ class DocumentPolicy < ApplicationPolicy
     true
   end
 
-  # 作成: sales以上
+  # 作成: デフォルトsales以上
   #
   # @return [Boolean]
   def create?
-    sales_or_above?
+    check_permission("document", "create", "sales")
   end
 
-  # 更新: sales以上
+  # 更新: デフォルトsales以上
   #
   # @return [Boolean]
   def update?
-    sales_or_above?
+    check_permission("document", "update", "sales")
   end
 
-  # 削除: admin以上
+  # 削除: デフォルトadmin以上
   #
   # @return [Boolean]
   def destroy?
-    admin_or_above?
+    check_permission("document", "destroy", "admin")
   end
 
-  # 複製: sales以上
+  # 複製: デフォルトsales以上
   #
   # @return [Boolean]
   def duplicate?
-    sales_or_above?
+    check_permission("document", "duplicate", "sales")
   end
 
-  # 帳票変換（見積→請求等）: sales以上
+  # 帳票変換（見積→請求等）: デフォルトsales以上
   #
   # @return [Boolean]
   def convert?
-    sales_or_above?
+    check_permission("document", "convert", "sales")
   end
 
-  # 承認: accountant以上
+  # 承認: デフォルトaccountant以上
   #
   # @return [Boolean]
   def approve?
-    accountant_or_above?
+    check_permission("document", "approve", "accountant")
   end
 
-  # 却下: accountant以上
+  # 却下: デフォルトaccountant以上
   #
   # @return [Boolean]
   def reject?
-    accountant_or_above?
+    check_permission("document", "reject", "accountant")
   end
 
-  # 送付: sales以上
+  # 送付: デフォルトsales以上
   #
   # @return [Boolean]
   def send_document?
-    sales_or_above?
+    check_permission("document", "send_document", "sales")
   end
 
-  # ロック（確定）: accountant以上
+  # ロック（確定）: デフォルトaccountant以上
   #
   # @return [Boolean]
   def lock?
-    accountant_or_above?
+    check_permission("document", "lock", "accountant")
   end
 
   # PDF出力: 全ロール許可
@@ -98,18 +97,18 @@ class DocumentPolicy < ApplicationPolicy
     true
   end
 
-  # 一括生成: accountant以上
+  # 一括生成: デフォルトaccountant以上
   #
   # @return [Boolean]
   def bulk_generate?
-    accountant_or_above?
+    check_permission("document", "bulk_generate", "accountant")
   end
 
-  # AI明細提案: sales以上
+  # AI明細提案: デフォルトsales以上
   #
   # @return [Boolean]
   def ai_suggest?
-    sales_or_above?
+    check_permission("document", "ai_suggest", "sales")
   end
 
   # 帳票一覧のスコープ

@@ -12,7 +12,7 @@ export default function AdminPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/admin/tenants");
+    router.replace("/admin/accounts");
   }, [router]);
 
   return null;
