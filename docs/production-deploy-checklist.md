@@ -47,13 +47,20 @@ Step 12: 最終確認
 
 | サービス | 用途 | 月額 |
 |---------|------|------|
-| AWS Lightsail | Rails API サーバー | $10 (約¥1,500) ※最初の3ヶ月無料 |
+| AWS Lightsail | Rails API サーバー | **$7 (約¥1,050)** Micro-1GB プラン |
 | Neon | データベース | ¥0 (無料枠) |
 | Vercel | フロントエンド | ¥0 (無料枠) |
 | Cloudflare R2 | PDF・画像保存 | ¥0 (10GB無料) |
-| Cloudflare | DNS | ¥0 |
+| Cloudflare | DNS + SSL | ¥0 |
 | Resend | メール送信 | ¥0 (月3,000通無料) |
-| **合計** | | **約¥1,500（3ヶ月目まで¥0）** |
+| Sentry | エラー監視 | ¥0 (月5,000イベント) |
+| BetterStack | 外形監視 | ¥0 (5モニター) |
+| Claude API (従量課金) | AI消込・AI見積等 | ¥200〜500 (利用量に依存) |
+| **合計** | | **約¥1,250〜1,550** |
+
+> **学習・開発フェーズ** では $5 の Nano-512MB プランでも動作します（Step 5-6 で設定するスワップ領域のおかげ）。有料ユーザーを迎える段階で $7 の Micro-1GB に上げてください。Lightsail のプラン変更は管理画面のスナップショット機能で簡単にできます。
+>
+> **Claude API の料金** はAI機能を使った回数に応じて発生します。AI消込・AI見積提案・AI移行マッピング等を使わなければ ¥0 です。
 
 ---
 
@@ -96,7 +103,7 @@ Step 12: 最終確認
   # --- メール送信: Resend (SMTP) を使う ---
   config.action_mailer.delivery_method = :smtp
   config.action_mailer.default_url_options = {
-    host: ENV.fetch("APP_HOST", "app.uketori.jp"),
+    host: ENV.fetch("APP_HOST", "app.invoiceflow.jp"),
     protocol: "https"
   }
   config.action_mailer.smtp_settings = {
@@ -161,7 +168,7 @@ SOLID_QUEUE_IN_PUMA=true
 # SECRET_KEY_BASE=
 # RESEND_API_KEY=
 # SENTRY_DSN=
-# APP_HOST=app.uketori.jp
+# APP_HOST=app.invoiceflow.jp
 ```
 
 ---
@@ -470,7 +477,7 @@ R2 にプログラムからアクセスするための鍵を作ります。
 2. 「無料アカウントを作成」をクリック
 3. メールアドレス、パスワード、アカウント名を入力
 4. 連絡先情報を入力
-5. クレジットカード情報を入力（Lightsail $10 プランは最初の3ヶ月無料です）
+5. クレジットカード情報を入力
 6. 電話番号認証を完了
 7. サポートプランは「ベーシック（無料）」を選択
 
@@ -490,14 +497,22 @@ R2 にプログラムからアクセスするための鍵を作ります。
 | インスタンスロケーション | 東京 (ap-northeast-1a) |
 | プラットフォーム | Linux/Unix |
 | 設計図 | 「OS のみ」→ **Ubuntu 22.04 LTS** |
-| インスタンスプラン | **$10 USD**（1GB RAM, 1 vCPU, 40GB SSD, 2TB転送量） |
+| インスタンスプラン | **$7 USD / Micro-1GB**（1GB RAM, 2 vCPU, 40GB SSD, 2TB転送量）※学習段階なら $5 の Nano-512MB でも可 |
 | インスタンス名 | `uketori-api` |
 
 5. 「インスタンスの作成」をクリック
 
 インスタンスの状態が「実行中」になるまで1〜2分待ちます。
 
-> **注意:** $10 プランは最初の3ヶ月無料です。3ヶ月後から月 $10 の課金が始まります。
+> **プラン選びのポイント:**
+>
+> | プラン | RAM | 月額 | おすすめの場面 |
+> |--------|-----|------|--------------|
+> | Nano-512MB | 512MB | $5 | 学習・開発・動作確認（スワップ必須） |
+> | **Micro-1GB** | 1GB | **$7** | **本番運用（推奨）** |
+> | Small-2GB | 2GB | $12 | 50ユーザー超で検討 |
+>
+> 迷ったら **Micro-1GB ($7)** を選んでください。後からスナップショット機能でプラン変更できます。
 
 ---
 
@@ -667,7 +682,7 @@ certbot --version
 
 #### スワップ領域の作成
 
-**「スワップ」とは？** メモリ（RAM）が足りなくなったとき、ディスクの一部をメモリの代わりに使う仕組みです。Lightsail $10 プランは RAM が 1GB しかないので、Docker + Nginx + Rails を動かすとメモリ不足になることがあります。スワップを設定すると、メモリ不足でアプリがクラッシュするのを防げます。
+**「スワップ」とは？** メモリ（RAM）が足りなくなったとき、ディスクの一部をメモリの代わりに使う仕組みです。Lightsail の Micro プラン（1GB）や Nano プラン（512MB）では、Docker + Nginx + Rails を動かすとメモリが不足することがあります。スワップを設定すると、メモリ不足でアプリがクラッシュするのを防げます。
 
 ```bash
 # 2GB のスワップファイルを作成
@@ -1146,7 +1161,7 @@ http://あなたのIPアドレス/up
 
 **なぜ？**
 
-- 独自ドメイン（例: `uketori.jp`）を使うと信頼性が上がります
+- 独自ドメイン（`invoiceflow.jp`）を使うと信頼性が上がります
 - SSL（HTTPS）がないと「安全ではありません」という警告がブラウザに表示されます
 - **Let's Encrypt** を使えば SSL 証明書が**無料**で取得できます
 
@@ -1154,19 +1169,17 @@ http://あなたのIPアドレス/up
 
 ---
 
-### 7-1. ドメインを購入
+### 7-1. ドメイン構成の確認
 
-おすすめのドメイン取得サービス:
+**使用するドメイン:** `invoiceflow.jp`（お名前.com で取得済み）
 
-| サービス | 特徴 |
-|---------|------|
-| **Cloudflare Registrar** | 最安・この後の DNS 設定が楽 |
-| **Google Domains** | シンプルで使いやすい |
-| **お名前.com** | 日本語対応・.jp ドメインが安い |
+このドメインで以下のように使い分けます:
 
-取得するドメイン例: `uketori.jp`
-
-> `.jp` ドメインは年間 約¥1,500〜3,000 です。`.com` なら年間 約¥1,500 前後です。
+| URL | 用途 | 向き先 |
+|-----|------|--------|
+| `api.invoiceflow.jp` | Rails API サーバー | Lightsail（静的 IP） |
+| `app.invoiceflow.jp` | フロントエンド（Next.js） | Vercel |
+| `invoiceflow.jp` | （将来）LP・公式サイト | 必要になった時に設定 |
 
 ---
 
@@ -1176,25 +1189,36 @@ http://あなたのIPアドレス/up
 
 1. https://dash.cloudflare.com にログイン
 2. 「Add a Site」をクリック
-3. ドメイン名（例: `uketori.jp`）を入力
+3. ドメイン名: `invoiceflow.jp` を入力
 4. **Free プラン**を選択 → 「Continue」
 5. 「Nameservers」ページに2つのネームサーバーが表示される → **メモ**
 
 ---
 
-### 7-3. ネームサーバーを変更
+### 7-3. お名前.com でネームサーバーを変更する
 
-**「ネームサーバー」とは？** 「このドメインの DNS 情報はどこにあるか」を指定するものです。Cloudflare で DNS を管理するために、ドメインのネームサーバーを Cloudflare に向けます。
+**「ネームサーバー」とは？** 「このドメインの DNS 情報はどこにあるか」を指定するものです。Cloudflare で DNS を管理するために、ドメインのネームサーバーを Cloudflare のものに切り替えます。
 
-ドメインを購入したサービス（お名前.com 等）の管理画面で:
+**お名前.com での操作手順:**
 
-1. ネームサーバー設定を開く
-2. 現在のネームサーバーを **Cloudflare のもの**に変更
-   - 例: `anna.ns.cloudflare.com`, `bob.ns.cloudflare.com`
-3. 保存
+1. https://navi.onamae.com にログイン
+2. 上部メニュー「ドメイン」→「ドメイン機能一覧」をクリック
+3. 「ネームサーバーの変更」をクリック
+4. `invoiceflow.jp` を選択
+5. 「他のネームサーバーを利用」タブをクリック
+6. ネームサーバー情報を入力:
 
+| 項目 | 値（Step 7-2 でメモした Cloudflare のネームサーバーを入力） |
+|------|--------------------------------------------------------|
+| ネームサーバー1 | 例: `anna.ns.cloudflare.com` |
+| ネームサーバー2 | 例: `bob.ns.cloudflare.com` |
+
+7. 「確認画面へ進む」→「設定する」をクリック
+
+> **注意:** お名前.com は「転出を防ぐため」の確認画面が出ることがあります。ネームサーバーの変更はドメインの転出（移管）ではないので、安心して進めてください。
+>
 > **反映に最大24時間かかります。** 通常は数分〜数時間で反映されます。
-> Cloudflare ダッシュボードでステータスが「Active」になれば反映完了です。
+> Cloudflare ダッシュボードに戻り、ステータスが **「Active」** になれば反映完了です。
 
 ---
 
@@ -1222,8 +1246,8 @@ Cloudflare ダッシュボード → 「DNS」→「Records」で以下を追加
 
 ```bash
 # 自分の PC で実行
-nslookup api.あなたのドメイン
-nslookup app.あなたのドメイン
+nslookup api.invoiceflow.jp
+nslookup app.invoiceflow.jp
 ```
 
 IP アドレスやホスト名が正しく表示されれば OK です。
@@ -1251,7 +1275,7 @@ sudo nano /etc/nginx/sites-available/uketori-api
 ```nginx
 server {
     listen 80;
-    server_name api.あなたのドメイン;  # ← ここを変更
+    server_name api.invoiceflow.jp;  # ← ここを変更
 
     client_max_body_size 20M;
 
@@ -1274,7 +1298,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ```bash
 # certbot を実行（ドメインは自分のものに置き換え）
-sudo certbot --nginx -d api.あなたのドメイン
+sudo certbot --nginx -d api.invoiceflow.jp
 ```
 
 **質問への回答:**
@@ -1294,7 +1318,7 @@ certbot が自動的に:
 
 #### 確認
 
-自分の PC のブラウザで `https://api.あなたのドメイン/up` にアクセス。
+自分の PC のブラウザで `https://api.invoiceflow.jp/up` にアクセス。
 鍵マーク（HTTPS）が表示され、応答があれば成功です。
 
 ---
@@ -1324,7 +1348,7 @@ sudo systemctl list-timers | grep certbot
 ### 7-7. Vercel にカスタムドメインを設定
 
 1. Vercel ダッシュボード → プロジェクト → 「Settings」→「Domains」
-2. `app.あなたのドメイン` を入力 →「Add」
+2. `app.invoiceflow.jp` を入力 →「Add」
 3. 検証が完了するまで数分待つ
 
 ---
@@ -1342,10 +1366,10 @@ nano .env.production
 以下の値を更新:
 
 ```bash
-CORS_ORIGINS=https://app.あなたのドメイン
-FRONTEND_URL=https://app.あなたのドメイン
-APP_HOST=app.あなたのドメイン
-MAILER_FROM=noreply@あなたのドメイン
+CORS_ORIGINS=https://app.invoiceflow.jp
+FRONTEND_URL=https://app.invoiceflow.jp
+APP_HOST=app.invoiceflow.jp
+MAILER_FROM=noreply@invoiceflow.jp
 ```
 
 保存して、コンテナを再起動:
@@ -1357,15 +1381,15 @@ docker compose -f docker-compose.production.yml up -d
 #### Vercel 側
 
 1. Vercel ダッシュボード → プロジェクト → 「Settings」→「Environment Variables」
-2. `NEXT_PUBLIC_API_URL` を `https://api.あなたのドメイン` に変更
+2. `NEXT_PUBLIC_API_URL` を `https://api.invoiceflow.jp` に変更
 3. 「Deployments」タブ → 最新のデプロイの「...」→「Redeploy」をクリック
 
 ---
 
 ### 7-9. 動作確認
 
-- `https://api.あなたのドメイン/up` → API が応答するか
-- `https://app.あなたのドメイン` → ログイン画面が表示されるか
+- `https://api.invoiceflow.jp/up` → API が応答するか
+- `https://app.invoiceflow.jp` → ログイン画面が表示されるか
 - ブラウザのアドレスバーに鍵マーク（HTTPS）が表示されるか
 
 ---
@@ -1400,7 +1424,7 @@ docker compose -f docker-compose.production.yml up -d
 **なぜ？** ドメイン認証をしないと、送信したメールが迷惑メールに振り分けられます。
 
 1. 左メニュー「Domains」→「Add Domain」
-2. ドメイン名を入力（例: `uketori.jp`）
+2. ドメイン名: `invoiceflow.jp` を入力
 3. 表示される DNS レコードを Cloudflare に追加:
 
    Cloudflare ダッシュボード → 「DNS」→「Records」で、Resend が指示する**すべてのレコード**を追加:
@@ -1521,7 +1545,7 @@ docker compose -f docker-compose.production.yml up -d
 | 設定項目 | 値 |
 |---------|-----|
 | **Monitor type** | HTTP(s) |
-| **URL to monitor** | `https://api.あなたのドメイン/up` |
+| **URL to monitor** | `https://api.invoiceflow.jp/up` |
 | **Check frequency** | `Every 3 minutes`（3分ごとにチェック） |
 | **Monitor name** | `Uketori API` |
 
@@ -1892,9 +1916,9 @@ ssh uketori
 
 | # | 確認内容 | URL | 期待される結果 |
 |---|---------|-----|--------------|
-| 1 | API が HTTPS で応答 | `https://api.あなたのドメイン/up` | 応答あり＋鍵マーク表示 |
-| 2 | フロントが表示される | `https://app.あなたのドメイン` | ログイン画面が表示 |
-| 3 | HTTP → HTTPS リダイレクト | `http://api.あなたのドメイン/up` | 自動で HTTPS に転送される |
+| 1 | API が HTTPS で応答 | `https://api.invoiceflow.jp/up` | 応答あり＋鍵マーク表示 |
+| 2 | フロントが表示される | `https://app.invoiceflow.jp` | ログイン画面が表示 |
+| 3 | HTTP → HTTPS リダイレクト | `http://api.invoiceflow.jp/up` | 自動で HTTPS に転送される |
 
 ---
 
@@ -2141,10 +2165,10 @@ bash deploy.sh
 | `R2_SECRET_ACCESS_KEY` | （R2 で取得した値） | Step 5-7 (Step 4 で取得) |
 | `R2_BUCKET` | `uketori-production` | Step 5-7 |
 | `MINIO_EXTERNAL_URL` | （`R2_ENDPOINT` と同じ値） | Step 5-7 |
-| `CORS_ORIGINS` | `https://app.uketori.jp` | Step 7-8 |
-| `FRONTEND_URL` | `https://app.uketori.jp` | Step 7-8 |
-| `APP_HOST` | `app.uketori.jp` | Step 7-8 |
-| `MAILER_FROM` | `noreply@uketori.jp` | Step 7-8 |
+| `CORS_ORIGINS` | `https://app.invoiceflow.jp` | Step 7-8 |
+| `FRONTEND_URL` | `https://app.invoiceflow.jp` | Step 7-8 |
+| `APP_HOST` | `app.invoiceflow.jp` | Step 7-8 |
+| `MAILER_FROM` | `noreply@invoiceflow.jp` | Step 7-8 |
 | `RESEND_API_KEY` | `re_...` | Step 8-4 |
 | `NTA_APP_ID` | （国税庁APIで取得） | Step 5-7 |
 | `SENTRY_DSN` | `https://...@sentry.io/...` | Step 9-3 |
@@ -2154,7 +2178,7 @@ bash deploy.sh
 
 | 変数名 | 値の例 | どの Step で設定したか |
 |--------|--------|---------------------|
-| `NEXT_PUBLIC_API_URL` | `https://api.uketori.jp` | Step 6-3, Step 7-8 |
+| `NEXT_PUBLIC_API_URL` | `https://api.invoiceflow.jp` | Step 6-3, Step 7-8 |
 
 ---
 
@@ -2181,16 +2205,507 @@ bash deploy.sh
 
 ---
 
-## スケールアップの目安
+## スケールアップ手順書
 
-ユーザーが増えてきたら段階的にプランを上げます:
+ユーザーが増えてきたら、以下の段階に沿ってインフラを拡張します。
+**「いつ」「何を見て」「何をするか」** を具体的に記載しています。
 
-| ユーザー数 | やること | 月額目安 |
-|-----------|---------|---------|
-| 0〜50 | 今の構成のまま（Lightsail $10） | 約¥1,500 |
-| 50〜200 | Lightsail $20 プラン（2GB RAM）に変更 | 約¥3,000 |
-| 200〜500 | Neon Pro ($19) + Lightsail $40（4GB RAM） | 約¥10,000 |
-| 500〜1,000 | EC2 + RDS に移行、ロードバランサー導入 | 約¥20,000〜 |
-| 1,000+ | ECS (Fargate) + Aurora でフルスケール | ¥50,000〜 |
+### スケールアップ全体像
 
-> Lightsail から EC2/ECS への移行は、同じ AWS アカウント内なのでスムーズにできます。これが最初から AWS を選んだメリットです。
+```
+Phase 1: 学習・開発         Lightsail Nano  ($5)   ¥750/月
+    ↓ 有料ユーザー獲得
+Phase 2: 本番運用開始        Lightsail Micro ($7)   ¥1,050/月
+    ↓ 50ユーザー超 or レスポンス低下
+Phase 3: 成長期             Lightsail Small ($12)  ¥1,800/月
+    ↓ 200ユーザー超 or DB容量逼迫
+Phase 4: 拡大期             Lightsail Medium ($24) + Neon Pro ($19)  ¥6,500/月
+    ↓ 500ユーザー超 or 可用性要件
+Phase 5: 本格スケール       EC2 + RDS + ALB        ¥20,000〜/月
+    ↓ 1,000ユーザー超
+Phase 6: フルスケール       ECS + Aurora + ElastiCache  ¥50,000〜/月
+```
+
+---
+
+### スケールアップのタイミング判断方法
+
+**「いつスケールアップすべきか」を判断するために、以下のコマンドを定期的に実行してください。**
+
+```bash
+ssh uketori
+```
+
+#### メモリ使用量の確認
+
+```bash
+free -h
+```
+
+```
+              total        used        free      shared  buff/cache   available
+Mem:          976Mi       750Mi        50Mi       10Mi       176Mi       100Mi  ← available が 100MB 以下なら要注意
+Swap:         2.0Gi       500Mi       1.5Gi                              ← Swap が 500MB 以上使われていたら要注意
+```
+
+| 状態 | 判断 |
+|------|------|
+| available が RAM の 20% 以上 | 正常。スケールアップ不要 |
+| available が RAM の 10〜20% | 注意。1ヶ月以内にスケールアップを検討 |
+| available が RAM の 10% 未満 | 危険。すぐにスケールアップ |
+| Swap が 500MB 以上使用中 | プラン不足。スケールアップ推奨 |
+
+#### CPU 使用率の確認
+
+```bash
+# 5秒間の平均 CPU 使用率を表示
+top -bn1 | head -5
+```
+
+`%Cpu(s):` の行を確認。`us`（ユーザー使用率）+ `sy`（システム使用率）の合計が：
+
+| 状態 | 判断 |
+|------|------|
+| 50% 未満 | 正常 |
+| 50〜80% | 注意。ピーク時間帯に継続的なら検討 |
+| 80% 以上 | 危険。すぐにスケールアップ |
+
+#### API レスポンス時間の確認
+
+```bash
+# API のレスポンス時間を測定（ミリ秒で表示）
+curl -o /dev/null -s -w "レスポンス時間: %{time_total}秒\n" http://localhost:8080/up
+```
+
+| 状態 | 判断 |
+|------|------|
+| 0.5秒未満 | 正常 |
+| 0.5〜1.0秒 | 注意 |
+| 1.0秒以上 | スケールアップ推奨 |
+
+#### ディスク使用量の確認
+
+```bash
+df -h /
+```
+
+| 状態 | 判断 |
+|------|------|
+| 使用率 60% 未満 | 正常 |
+| 60〜80% | Docker の古いイメージを削除: `docker system prune -f` |
+| 80% 以上 | スケールアップ推奨 |
+
+---
+
+### Phase 1→2: Nano ($5) → Micro ($7)
+
+**タイミング:** 最初の有料ユーザーを迎える時、または Swap 使用量が常時 500MB を超える時
+
+**所要時間:** 約30分
+**ダウンタイム:** 約5〜10分
+
+#### 手順
+
+**1. 現在のサーバーのスナップショットを作成**
+
+「スナップショット」とは、サーバーの中身をそのまま写真のように保存する機能です。万が一失敗しても、この時点の状態に戻れます。
+
+1. https://lightsail.aws.amazon.com にアクセス
+2. `uketori-api` をクリック
+3. 「スナップショット」タブをクリック
+4. 「手動スナップショットの作成」をクリック
+5. 名前: `uketori-api-before-upgrade-YYYYMMDD`（日付を入れる）
+6. 「作成」をクリック
+7. ステータスが **「使用可能」** になるまで待つ（5〜10分）
+
+**2. スナップショットから新しいインスタンスを作成**
+
+1. 作成したスナップショットの右の「⋮」メニュー →「新しいインスタンスの作成」
+2. 以下を設定:
+
+| 設定項目 | 値 |
+|---------|-----|
+| リージョン | 東京（元と同じ） |
+| インスタンスプラン | **Micro-1GB ($7)** ← ここで上位プランを選ぶ |
+| インスタンス名 | `uketori-api-new` |
+
+3. 「インスタンスの作成」をクリック
+4. 状態が **「実行中」** になるまで待つ
+
+**3. 新しいインスタンスの動作確認**
+
+新しいインスタンスの **パブリック IP** を確認し（Lightsail ダッシュボードに表示される）、SSH で接続:
+
+```bash
+# 新しいインスタンスに一時的に接続（IPは新しいもの）
+ssh -i ~/Downloads/LightsailDefaultKey-ap-northeast-1.pem ubuntu@新しいIPアドレス
+```
+
+```bash
+# Docker が動いているか確認
+docker compose -f /home/ubuntu/uketori/docker-compose.production.yml ps
+
+# API が応答するか確認
+curl http://localhost:8080/up
+```
+
+応答があれば OK です。`exit` でログアウト。
+
+**4. 静的 IP を付け替える（ここでダウンタイムが発生します）**
+
+1. Lightsail ダッシュボード → 左メニュー「ネットワーキング」
+2. `uketori-api-ip`（静的 IP）をクリック
+3. 「デタッチ」をクリック（**旧インスタンスから外す**）
+4. 「アタッチ先」で **`uketori-api-new`** を選択
+5. 「アタッチ」をクリック
+
+> この「デタッチ→アタッチ」の間（約1〜2分）だけダウンタイムが発生します。
+
+**5. 動作確認**
+
+```bash
+# 元の SSH 設定で接続できるか確認（静的IPは同じなので接続先は変わらない）
+ssh uketori
+
+# メモリが増えているか確認
+free -h
+
+# API が動いているか確認
+curl http://localhost:8080/up
+```
+
+`Mem: total` の値が新しいプランの RAM（1GB なら `976Mi` 程度）になっていれば成功です。
+
+**6. 旧インスタンスを削除**
+
+動作確認が完了し、1日程度問題なく動いたら:
+
+1. Lightsail ダッシュボード → `uketori-api`（旧インスタンス）をクリック
+2. 「削除」タブ → 「インスタンスの削除」
+3. 確認画面で「はい、削除します」
+
+> **注意:** スナップショットは残しておいてください。万が一問題が出た場合に戻れます。
+> 不要になったスナップショットは 1 週間後に削除しても OK です（スナップショットにも若干の料金がかかります）。
+
+---
+
+### Phase 2→3: Micro ($7) → Small ($12)
+
+**タイミング:** 50ユーザー超、または API レスポンスが常時 0.5秒以上
+
+**手順は Phase 1→2 と全く同じです。** 唯一の違いは:
+
+| 手順 | 変更点 |
+|------|--------|
+| 手順2 のインスタンスプラン | **Small-2GB ($12)** を選ぶ |
+
+---
+
+### Phase 3→4: Small ($12) → Medium ($24) + Neon Pro
+
+**タイミング:** 200ユーザー超、または以下のいずれかに該当:
+- Neon Free の 0.5GB ストレージ上限に近づいている
+- Neon のコンピュート時間（191時間/月）を超過しそう
+- SolidQueue のジョブが遅延している
+
+**所要時間:** 約1時間
+**ダウンタイム:** 約5〜10分（Lightsail の切り替え時のみ）
+
+#### 手順 A: Lightsail のプランアップ
+
+Phase 1→2 と同じ手順で、**Medium-4GB ($24)** にアップグレードしてください。
+
+#### 手順 B: Neon を Pro プランにアップグレード
+
+1. https://console.neon.tech にログイン
+2. プロジェクト `uketori` を選択
+3. 左メニュー「Settings」→「Billing」
+4. 「Upgrade to Pro」をクリック
+5. 支払い情報を入力（まだの場合）
+6. 「Upgrade」をクリック
+
+**Pro プランで変わること:**
+
+| 項目 | Free | Pro ($19/月) |
+|------|------|-------------|
+| ストレージ | 0.5GB | 10GB（超過分は $0.15/GB） |
+| コンピュート時間 | 191時間/月 | 300時間/月（超過分は従量課金） |
+| 自動スリープ | 5分で停止 | 5分で停止（設定変更可能） |
+| ブランチ数 | 10 | 無制限 |
+
+> **Neon Pro で「自動スリープまでの時間」を延長する（推奨）:**
+>
+> 1. Neon ダッシュボード → プロジェクト → 「Settings」→「Compute」
+> 2. 「Auto-suspend delay」を `5 minutes` → `30 minutes` に変更
+>
+> これでコールドスタート（スリープ復帰に 1〜2秒かかる現象）の頻度が大幅に減ります。
+
+#### 手順 C: SolidQueue を別プロセスに分離（推奨）
+
+ユーザーが増えると、Puma（Web リクエスト処理）と SolidQueue（バックグラウンドジョブ）が同じプロセスでメモリを取り合います。分離すると安定性が向上します。
+
+**1. サーバーに SSH 接続:**
+
+```bash
+ssh uketori
+cd /home/ubuntu/uketori
+```
+
+**2. `.env.production` を編集:**
+
+```bash
+nano .env.production
+```
+
+以下の行を変更:
+
+```bash
+# 変更前
+SOLID_QUEUE_IN_PUMA=true
+
+# 変更後
+SOLID_QUEUE_IN_PUMA=false
+```
+
+**3. `docker-compose.production.yml` を編集:**
+
+```bash
+nano docker-compose.production.yml
+```
+
+`api` サービスの下に `worker` サービスを追加:
+
+```yaml
+services:
+  api:
+    build:
+      context: ./api
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - .env.production
+    environment:
+      - RAILS_ENV=production
+      - PORT=8080
+      - SOLID_QUEUE_IN_PUMA=false
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    build:
+      context: ./api
+    env_file:
+      - .env.production
+    environment:
+      - RAILS_ENV=production
+    command: ["bundle", "exec", "rake", "solid_queue:start"]
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+**4. 再起動:**
+
+```bash
+docker compose -f docker-compose.production.yml build
+docker compose -f docker-compose.production.yml up -d
+```
+
+**5. 確認:**
+
+```bash
+docker compose -f docker-compose.production.yml ps
+```
+
+`api` と `worker` の2つのコンテナが `Up` になっていれば成功です。
+
+```bash
+# worker のログを確認（SolidQueue が動いているか）
+docker compose -f docker-compose.production.yml logs worker --tail 20
+```
+
+`SolidQueue-0.x.x started` のようなログが出ていれば OK です。
+
+---
+
+### Phase 4→5: Lightsail → EC2 + RDS + ALB
+
+**タイミング:** 500ユーザー超、または以下のいずれかに該当:
+- 高可用性（ダウンタイム最小化）が必要
+- オートスケーリングが必要
+- Neon のレイテンシ（シンガポールリージョン）が問題になっている
+
+**所要時間:** 4〜8時間（初めての場合）
+**ダウンタイム:** DNS 切り替え時の数分のみ（事前準備をすれば）
+
+> **注意:** この Phase からは AWS の中級スキルが必要です。
+> 不安な場合は、AWS のソリューションアーキテクトに相談（無料枠あり）するか、
+> 経験のあるインフラエンジニアに依頼することを推奨します。
+
+#### 構成の変更点
+
+```
+【Phase 4 まで】
+ユーザー → Cloudflare → Lightsail (Nginx + Docker + Rails)
+                                  ↓
+                              Neon (DB)
+
+【Phase 5】
+ユーザー → Cloudflare → ALB (ロードバランサー)
+                          ↓
+                    EC2 × 2台 (Docker + Rails)
+                          ↓
+                    RDS PostgreSQL (東京リージョン)
+```
+
+#### 手順概要
+
+**1. RDS PostgreSQL を作成**
+
+1. AWS コンソール → RDS → 「データベースの作成」
+2. 設定:
+
+| 設定項目 | 値 |
+|---------|-----|
+| エンジン | PostgreSQL 16 |
+| テンプレート | 開発/テスト（本番用は「本番稼働用」） |
+| インスタンスクラス | `db.t3.micro`（最小。約 $15/月） |
+| ストレージ | 汎用 SSD (gp3)、20GB |
+| マルチ AZ | いいえ（コスト節約。500ユーザーなら不要） |
+| VPC | デフォルト VPC |
+| パブリックアクセス | いいえ |
+| DB名 | `uketori_production` |
+
+3. 作成完了後、エンドポイント（`xxx.xxx.ap-northeast-1.rds.amazonaws.com`）をメモ
+
+**2. Neon → RDS にデータを移行**
+
+```bash
+# Lightsail サーバーで実行
+
+# 1. Neon からデータをダンプ
+docker compose -f docker-compose.production.yml exec -T api \
+  bash -c "pg_dump \$(bin/rails runner \"puts ENV['DATABASE_URL']\" | tail -1) --no-owner --no-privileges" \
+  > /home/ubuntu/neon_dump.sql
+
+# 2. RDS にデータをリストア（RDSのエンドポイント・パスワードに置き換え）
+sudo apt install -y postgresql-client
+psql "postgres://postgres:パスワード@RDSエンドポイント:5432/uketori_production" < /home/ubuntu/neon_dump.sql
+```
+
+**3. EC2 インスタンスを作成**
+
+1. AWS コンソール → EC2 → 「インスタンスの起動」
+2. 設定:
+
+| 設定項目 | 値 |
+|---------|-----|
+| AMI | Ubuntu 22.04 LTS |
+| インスタンスタイプ | `t3.small`（2GB RAM。約 $15/月） |
+| キーペア | Lightsail で使っていたものを再利用 or 新規作成 |
+| VPC / サブネット | RDS と同じ VPC |
+| セキュリティグループ | SSH(22) + HTTP(8080) を許可 |
+
+3. EC2 に Docker をインストール → Lightsail と同じ手順
+4. コードを clone → `.env.production` の `DATABASE_URL` を RDS のものに変更
+5. Docker Compose で起動
+
+**4. ALB（ロードバランサー）を作成**
+
+1. AWS コンソール → EC2 → ロードバランサー → 「作成」
+2. タイプ: **Application Load Balancer**
+3. リスナー: HTTPS (443)
+4. ターゲットグループ: EC2 インスタンスのポート 8080
+5. SSL 証明書: AWS Certificate Manager (ACM) で無料取得
+
+**5. DNS を切り替え**
+
+Cloudflare の DNS レコードを変更:
+
+| Type | Name | Content | 変更点 |
+|------|------|---------|--------|
+| A → CNAME | `api` | ALB の DNS 名 | Lightsail IP → ALB に変更 |
+
+**6. 動作確認後、Lightsail インスタンスを停止・削除**
+
+> **この Phase の詳細な手順** は、実施するタイミングで AWS の最新ドキュメントを参照してください。
+> AWS は頻繁に画面や手順が更新されるため、古い手順のまま実施するとエラーになることがあります。
+>
+> 参考: https://docs.aws.amazon.com/ja_jp/elasticloadbalancing/latest/application/
+
+---
+
+### Phase 5→6: EC2 → ECS (Fargate) + Aurora
+
+**タイミング:** 1,000ユーザー超、または以下のいずれか:
+- EC2 の手動管理が運用負荷になっている
+- オートスケーリング（負荷に応じた自動台数調整）が必要
+- DB の読み込み負荷が高い（リードレプリカが必要）
+
+> **この Phase は高度なインフラスキルが必要です。**
+> この段階に達する頃には、売上も相応にあるはずなので、
+> インフラエンジニアの採用またはAWSパートナー企業への委託を強く推奨します。
+
+#### 構成
+
+```
+ユーザー → CloudFront (CDN) → ALB
+                                ↓
+                          ECS Fargate (自動スケール)
+                            ├─ api-service × N台
+                            └─ worker-service × N台
+                                ↓
+                          Aurora PostgreSQL (自動スケール)
+                            ├─ Writer (書き込み)
+                            └─ Reader × N台 (読み込み)
+                                ↓
+                          ElastiCache Redis (セッション/キャッシュ)
+```
+
+#### 主要な変更点
+
+| 項目 | Phase 5 | Phase 6 |
+|------|---------|---------|
+| コンピュート | EC2（手動管理） | ECS Fargate（サーバーレス） |
+| DB | RDS PostgreSQL | Aurora PostgreSQL（自動スケール） |
+| キャッシュ | SolidCache（DB内） | ElastiCache Redis |
+| スケーリング | 手動 | オートスケーリング |
+| デプロイ | SSH + Docker Compose | ECR + ECS ローリングデプロイ |
+
+#### 概算コスト
+
+| サービス | 月額目安 |
+|---------|---------|
+| ECS Fargate (API × 2) | ¥8,000〜15,000 |
+| ECS Fargate (Worker × 1) | ¥4,000〜8,000 |
+| Aurora PostgreSQL | ¥15,000〜30,000 |
+| ElastiCache Redis | ¥5,000〜10,000 |
+| ALB | ¥3,000〜5,000 |
+| CloudFront | ¥1,000〜3,000 |
+| その他（ECR, CloudWatch等） | ¥2,000〜5,000 |
+| **合計** | **¥38,000〜76,000** |
+
+---
+
+### スケールアップ時の共通チェックリスト
+
+どの Phase のスケールアップでも、完了後に以下を必ず確認してください:
+
+| # | 確認内容 | コマンド / 方法 |
+|---|---------|---------------|
+| 1 | API が応答する | `curl https://api.ドメイン/up` |
+| 2 | ログインできる | ブラウザでログイン |
+| 3 | PDF が生成できる | 帳票を作成して PDF ダウンロード |
+| 4 | メールが送信できる | パスワードリセットを試す |
+| 5 | AI 機能が動く | AI 消込を試す |
+| 6 | 定期ジョブが動いている | SolidQueue の RecurringTask 数を確認 |
+| 7 | BetterStack が「Up」 | BetterStack ダッシュボードを確認 |
+| 8 | バックアップが動く | `bash /home/ubuntu/backup.sh` を手動実行 |
+| 9 | Sentry にエラーがない | Sentry ダッシュボードを確認 |

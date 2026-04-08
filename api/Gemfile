@@ -27,9 +27,8 @@ gem "image_processing", "~> 1.2"
 # AI
 gem "anthropic", require: false
 gem "connection_pool", "~> 2.5"
-
-# メール
-gem "sendgrid-ruby", require: false
+gem "sentry-ruby"
+gem "sentry-rails"
 
 # PDF生成
 gem "matrix"

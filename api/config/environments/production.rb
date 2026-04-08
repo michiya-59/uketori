@@ -61,4 +61,24 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # --- ファイル保存: Cloudflare R2 を使う ---
+  config.active_storage.service = :amazon
+
+  # --- メール送信: Resend (SMTP) を使う ---
+  config.action_mailer.delivery_method = :smtp
+  config.action_mailer.default_url_options = {
+    host: ENV.fetch("APP_HOST", "app.uketori.jp"),
+    protocol: "https"
+  }
+  config.action_mailer.smtp_settings = {
+    address: "smtp.resend.com",
+    port: 465,
+    user_name: "resend",
+    password: ENV["RESEND_API_KEY"],
+    tls: true
+  }
+
+  # --- ヘルスチェックは SSL リダイレクトをスキップ ---
+  config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 end

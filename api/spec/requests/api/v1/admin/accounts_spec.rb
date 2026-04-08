@@ -4,7 +4,7 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::Admin::Accounts", type: :request do
   let!(:admin_tenant) { create(:tenant) }
-  let!(:admin_user) { create(:user, tenant: admin_tenant, email: "admin@example.com", role: "owner") }
+  let!(:admin_user) { create(:user, tenant: admin_tenant, email: "admin@example.com", role: "owner", system_admin: true) }
   let!(:admin_token) { JwtService.encode(admin_user)[:access_token] }
   let!(:auth_headers) { { "Authorization" => "Bearer #{admin_token}" } }
 

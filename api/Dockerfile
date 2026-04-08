@@ -2,7 +2,7 @@ FROM ruby:3.3-slim AS base
 RUN apt-get update -qq && \
     apt-get install -y libpq-dev libjemalloc2 curl libvips && \
     rm -rf /var/lib/apt/lists/*
-ENV LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 ENV RUBY_YJIT_ENABLE=1
 ENV MALLOC_ARENA_MAX=2
 WORKDIR /app

@@ -266,6 +266,22 @@ class ApiClient {
   }
 
   /**
+   * PUTリクエストを送信する
+   * @param path - APIエンドポイントのパス
+   * @param body - リクエストボディ
+   * @returns APIレスポンスのボディ
+   * @throws ApiClientError リクエスト失敗時
+   */
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const url = `${this.baseUrl}${path}`
+    return this.request<T>(url, {
+      method: 'PUT',
+      headers: this.buildHeaders(),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+  }
+
+  /**
    * DELETEリクエストを送信する
    * @param path - APIエンドポイントのパス
    * @throws ApiClientError リクエスト失敗時

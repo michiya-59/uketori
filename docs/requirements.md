@@ -73,7 +73,7 @@
 │ Hobby→Pro ¥0〜$20   │ │ - SolidQueue（非同期ジョブ）      │
 └─────────────────────┘ │ - SolidCache（キャッシュ）        │
                         │ - Nginx（リバースプロキシ）        │
-                        │ $10/月（最初の3ヶ月無料）          │
+                        │ Micro $7/月                       │
                         └────┬──────────┬─────────────────┘
                              │          │
               ┌──────────────┼──────────┼──────────────┐
@@ -96,7 +96,7 @@
 | サービス | 用途 | 月額 | 無料枠 |
 |---------|------|------|--------|
 | Vercel (Hobby→Pro) | Next.jsホスティング | ¥0〜$20 | Hobby無料。有償ユーザー獲得後Pro化 |
-| AWS Lightsail ($10) | Rails API + Nginx + Docker | $10 | 最初の3ヶ月無料 |
+| AWS Lightsail (Micro) | Rails API + Nginx + Docker | $7 | Micro-1GB プラン |
 | Neon PostgreSQL (Free) | データベース | ¥0 | 0.5GB / 191コンピュート時間/月 |
 | Cloudflare R2 (Free) | PDF・画像保存 | ¥0 | 10GB / S3互換 / エグレス無料 |
 | Cloudflare (Free) | DNS + SSL | ¥0 | |
@@ -104,13 +104,13 @@
 | Sentry (Free) | エラー監視 | ¥0 | 月5,000イベント |
 | BetterStack (Free) | 外形監視 | ¥0 | 5モニター |
 | GitHub Actions | CI/CD | ¥0 | 月2,000分 |
-| **合計** | | **¥0〜1,500（3ヶ月目まで¥0）** | |
+| **合計** | | **約¥1,050 + Claude API従量課金** | |
 
 ### スケールアップ計画
 
 | ユーザー数 | 構成変更 | 月額目安 |
 |-----------|---------|---------|
-| 0〜50 | Lightsail $10 + Neon Free + Vercel Hobby | ¥0〜1,500 |
+| 0〜50 | Lightsail Micro-1GB ($7) + Neon Free + Vercel Hobby | ¥1,050 + Claude API |
 | 50〜200 | Lightsail $20（2GB RAM）、Neon Pro ($19)、Vercel Pro ($20) | ¥6,000〜10,000 |
 | 200〜500 | Lightsail $40（4GB RAM）、SolidQueue別プロセス化 | ¥10,000〜15,000 |
 | 500〜1,000 | EC2 + RDS + ロードバランサー | ¥20,000〜30,000 |
@@ -1749,7 +1749,7 @@ CMD ["npm", "run", "dev"]
 
 | 環境 | 開発 | 本番（Phase 1） | 切替に必要な作業 |
 |------|------|----------------|----------------|
-| Rails API | Docker | **AWS Lightsail** ($10/月、3ヶ月無料) | Docker + Nginx構成 |
+| Rails API | Docker | **AWS Lightsail** (Micro-1GB $7/月) | Docker + Nginx構成 |
 | Next.js | Docker | **Vercel** (¥0〜$20/月) | git push（自動デプロイ） |
 | PostgreSQL | Docker postgres:16 | **Neon** (¥0) | DATABASE_URL差替のみ |
 | ファイルストレージ | MinIO (Docker) | **Cloudflare R2** (¥0) | endpoint/key差替のみ（S3互換） |
@@ -1951,14 +1951,14 @@ uketori/
 |---------|---------|--------|------|------|
 | DNS/SSL | Cloudflare + Let's Encrypt | Free | ¥0 | DNS管理 + 無料SSL証明書 |
 | フロントエンド | Vercel | Hobby → Pro | ¥0 → $20 | Next.js SSR/SSG |
-| APIサーバー | AWS Lightsail | $10（1GB RAM, 1vCPU） | $10/月 | Docker + Nginx + Rails。3ヶ月無料 |
+| APIサーバー | AWS Lightsail | Micro-1GB（1GB RAM, 2vCPU） | $7/月 | Docker + Nginx + Rails |
 | データベース | Neon PostgreSQL | Free → Pro | ¥0 → $19 | Serverless PostgreSQL。0.5GB無料 |
 | ファイルストレージ | Cloudflare R2 | Free | ¥0 | 10GB無料。S3互換API |
 | メール送信 | Resend | Free → Pro | ¥0 → $20 | 月3,000通無料 |
 | エラー監視 | Sentry | Free | ¥0 | 月5,000イベント |
 | 外形監視 | BetterStack (旧Better Uptime) | Free | ¥0 | 5モニター無料 |
 | CI/CD | GitHub Actions | Free | ¥0 | 月2,000分 |
-| **合計（Phase 1）** | | | **¥0〜1,500/月（3ヶ月無料）** | |
+| **合計（Phase 1）** | | | **約¥1,050/月 + Claude API従量課金** | |
 
 ### ジョブ基盤: SolidQueue
 
