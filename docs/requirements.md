@@ -79,9 +79,9 @@
               ┌──────────────┼──────────┼──────────────┐
               │              │          │              │
        ┌──────▼──┐   ┌──────▼──┐ ┌────▼─────┐ ┌─────▼───────┐
-       │Neon     │   │Cloudflare│ │Cloudflare│ │外部API      │
+       │Supabase │   │Cloudflare│ │Cloudflare│ │外部API      │
        │PostgreSQL│   │R2       │ │(CDN/DNS) │ │- Claude API │
-       │Serverless│   │(PDF/    │ │¥0       │ │- 国税庁API  │
+       │Managed DB│   │(PDF/    │ │¥0       │ │- 国税庁API  │
        │¥0       │   │ 画像)   │ │          │ │- Resend     │
        │         │   │¥0       │ │          │ │- Stripe     │
        │+Solid   │   │S3互換API│ │          │ └─────────────┘
@@ -97,7 +97,7 @@
 |---------|------|------|--------|
 | Vercel (Hobby→Pro) | Next.jsホスティング | ¥0〜$20 | Hobby無料。有償ユーザー獲得後Pro化 |
 | AWS Lightsail (Micro) | Rails API + Nginx + Docker | $7 | Micro-1GB プラン |
-| Neon PostgreSQL (Free) | データベース | ¥0 | 0.5GB / 191コンピュート時間/月 |
+| Supabase PostgreSQL (Free) | データベース | ¥0 | 500MB / 東京リージョン利用可 |
 | Cloudflare R2 (Free) | PDF・画像保存 | ¥0 | 10GB / S3互換 / エグレス無料 |
 | Cloudflare (Free) | DNS + SSL | ¥0 | |
 | Resend (Free) | メール送信 | ¥0 | 月3,000通 |
@@ -110,9 +110,9 @@
 
 | ユーザー数 | 構成変更 | 月額目安 |
 |-----------|---------|---------|
-| 0〜50 | Lightsail Micro-1GB ($7) + Neon Free + Vercel Hobby | ¥1,050 + Claude API |
-| 50〜200 | Lightsail $20（2GB RAM）、Neon Pro ($19)、Vercel Pro ($20) | ¥6,000〜10,000 |
-| 200〜500 | Lightsail $40（4GB RAM）、SolidQueue別プロセス化 | ¥10,000〜15,000 |
+| 0〜50 | Lightsail Micro-1GB ($7) + Supabase Free + Vercel Hobby | ¥1,050 + Claude API |
+| 50〜200 | Lightsail Small-2GB ($12) + Vercel Pro ($20) | ¥5,000〜7,000 |
+| 200〜500 | Lightsail Medium-4GB ($24) + Supabase Pro ($25) + SolidQueue別プロセス化 | ¥10,000〜15,000 |
 | 500〜1,000 | EC2 + RDS + ロードバランサー | ¥20,000〜30,000 |
 | 1,000+ | ECS (Fargate) + Aurora でフルスケール | ¥50,000〜 |
 
@@ -869,7 +869,7 @@ importing
 | user_agent | varchar(500) | YES | | |
 | created_at | timestamp | NO | now() | |
 
-**パーティショニング:** created_atで月次パーティション（Neon Pro移行後に有効化）
+**パーティショニング:** created_atで月次パーティション（データ量増加時に有効化）
 
 ---
 
@@ -1616,7 +1616,7 @@ Step 5: 完了
 | UIライブラリ | Tailwind CSS + shadcn/ui | — | |
 | バックエンドAPI | Ruby on Rails (APIモード) | 7.2.x | |
 | バックエンド言語 | Ruby | 3.3.x | YJIT有効 |
-| データベース | PostgreSQL | 16.x | 開発:Docker / 本番:Neon |
+| データベース | PostgreSQL | 16.x | 開発:Docker / 本番:Supabase |
 | ジョブキュー | SolidQueue | — | PostgreSQL-backed。Redis不要 |
 | キャッシュ | SolidCache | — | PostgreSQL-backed。Redis不要 |
 | テスト(API) | RSpec | — | |
@@ -1708,7 +1708,7 @@ volumes:
 
 | 要素 | 開発環境 | 本番で何に相当するか |
 |------|---------|-------------------|
-| PostgreSQL | Docker (`postgres:16-alpine`) | Neon PostgreSQL (Serverless) |
+| PostgreSQL | Docker (`postgres:16-alpine`) | Supabase PostgreSQL |
 | S3互換ストレージ | MinIO (Docker) | Cloudflare R2 |
 | Rails API | Docker (`Dockerfile.dev`) | AWS Lightsail（Docker + Nginx） |
 | Next.js | Docker (`Dockerfile.dev`) | Vercel |
@@ -1751,7 +1751,7 @@ CMD ["npm", "run", "dev"]
 |------|------|----------------|----------------|
 | Rails API | Docker | **AWS Lightsail** (Micro-1GB $7/月) | Docker + Nginx構成 |
 | Next.js | Docker | **Vercel** (¥0〜$20/月) | git push（自動デプロイ） |
-| PostgreSQL | Docker postgres:16 | **Neon** (¥0) | DATABASE_URL差替のみ |
+| PostgreSQL | Docker postgres:16 | **Supabase** (¥0) | DATABASE_URL差替のみ |
 | ファイルストレージ | MinIO (Docker) | **Cloudflare R2** (¥0) | endpoint/key差替のみ（S3互換） |
 | DNS/SSL | — | **Cloudflare + Let's Encrypt** (¥0) | ドメイン設定 + certbot |
 | メール | MailHog or letter_opener | **Resend** (¥0) | API key設定 |
@@ -1761,7 +1761,7 @@ CMD ["npm", "run", "dev"]
 
 ```
 開発: DATABASE_URL=postgres://postgres:password@db:5432/uketori_development
-本番: DATABASE_URL=postgres://user:pass@ep-xxx.neon.tech/uketori_production?sslmode=require
+本番: DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres
 
 開発: R2_ENDPOINT=http://minio:9000
 本番: R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
@@ -1909,11 +1909,11 @@ uketori/
 | ダッシュボード表示 | 1秒以下 |
 | 同時接続ユーザー数 | 100（Phase 1）→ 1000（スケールアップ後） |
 
-### Neon接続時の考慮事項
-- Neon Free Tierはアイドル時にコンピュートが自動スリープ（5分無操作後）
-- スリープからの復帰（コールドスタート）に1〜2秒を要する
-- 対策: `database.yml` に `connect_timeout: 10` を設定
-- 対策: SolidQueueの定期ジョブ実行により実質的にスリープを回避
+### Supabase接続時の考慮事項
+- AWS Lightsail からは IPv4 前提になるため、`Session pooler`（ポート `5432`）の接続文字列を利用する
+- Rails 本番設定では `prepared_statements: true` のため、`Transaction mode (6543)` ではなく `Session pooler` を使う
+- `database.yml` に `connect_timeout: 10` を設定し、接続時の不安定さに備える
+- 無料プランでも日次バックアップはあるが、運用上は `pg_dump` による自前バックアップを前提とする
 
 ## 5.2 セキュリティ
 
@@ -1938,7 +1938,7 @@ uketori/
 | 項目 | 仕様 |
 |------|------|
 | SLA目標 | Phase 1: 99.5% → Phase 2以降: 99.9% |
-| バックアップ | Neon自動バックアップ（7日保持）+ cronによるpg_dump（日次・ローカル30日保持） |
+| バックアップ | Supabase日次バックアップ + cronによるpg_dump（日次・ローカル30日保持） |
 | デプロイ | GitHub Actions → SSH → Docker Compose（Lightsail） |
 | フロントデプロイ | GitHub Actions → Vercel（git push自動デプロイ） |
 | 監視 | Sentry（エラー追跡）+ BetterStack（外形監視） |
@@ -1952,7 +1952,7 @@ uketori/
 | DNS/SSL | Cloudflare + Let's Encrypt | Free | ¥0 | DNS管理 + 無料SSL証明書 |
 | フロントエンド | Vercel | Hobby → Pro | ¥0 → $20 | Next.js SSR/SSG |
 | APIサーバー | AWS Lightsail | Micro-1GB（1GB RAM, 2vCPU） | $7/月 | Docker + Nginx + Rails |
-| データベース | Neon PostgreSQL | Free → Pro | ¥0 → $19 | Serverless PostgreSQL。0.5GB無料 |
+| データベース | Supabase PostgreSQL | Free → Pro | ¥0 → $25 | 東京リージョン対応。Freeは500MB |
 | ファイルストレージ | Cloudflare R2 | Free | ¥0 | 10GB無料。S3互換API |
 | メール送信 | Resend | Free → Pro | ¥0 → $20 | 月3,000通無料 |
 | エラー監視 | Sentry | Free | ¥0 | 月5,000イベント |
@@ -2061,7 +2061,7 @@ ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
 | 週 | 開発内容 | 完了条件 |
 |----|---------|---------|
-| 1 | 環境構築・DB設計・API設計 | Rails + Next.js + Neon PostgreSQL + Cloudflare R2 が起動。全テーブルのマイグレーション完了。SolidQueue動作確認 |
+| 1 | 環境構築・DB設計・API設計 | Rails + Next.js + Supabase PostgreSQL + Cloudflare R2 が起動。全テーブルのマイグレーション完了。SolidQueue動作確認 |
 | 2 | 認証・テナント・ユーザー管理 | 管理者発行アカウントでログイン→JWT発行→認可が動作 |
 | 3 | 自社情報設定・業種テンプレート | テナント設定画面。業種選択で用語・品目が切り替わる |
 | 4 | 顧客マスタ管理（CRUD + 適格番号検証） | 顧客一覧・作成・編集・削除。国税庁API連携 |
@@ -2262,7 +2262,7 @@ end
 
 | 加点項目 | 該当 | 根拠 |
 |---------|------|------|
-| クラウド（SaaS） | ✅ | Webブラウザアクセス。データはクラウド上（Neon + Cloudflare R2） |
+| クラウド（SaaS） | ✅ | Webブラウザアクセス。データはクラウド上（Supabase + Cloudflare R2） |
 | インボイス制度対応 | ✅ | 適格請求書発行。登録番号自動検証 |
 | 電子帳簿保存法対応 | ✅ | タイムスタンプ・検索・改ざん防止 |
 | AI機能搭載 | ✅ | AI消込・AI見積提案・AI売上予測・AI OCR・AIマッピング |
@@ -2286,8 +2286,8 @@ end
 # Rails
 RAILS_ENV=production
 SECRET_KEY_BASE=xxx
-DATABASE_URL=postgres://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/uketori_production?sslmode=require
-# ※ Neon PostgreSQL接続URL。sslmode=require必須
+DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres
+# ※ Supabase Session pooler接続URL（AWS Lightsail向け）
 
 # SolidQueue
 SOLID_QUEUE_IN_PUMA=true          # Phase 1: Puma内蔵モード
@@ -2488,7 +2488,7 @@ DunningRule.create!([
 |------|------|------|---------|
 | ジョブキュー | Sidekiq + Redis | **SolidQueue（PostgreSQL-backed）** | Gemfile, config, デプロイ |
 | キャッシュ | Redis | **SolidCache（PostgreSQL-backed）** | Gemfile, config |
-| データベース | RDS PostgreSQL | **Neon PostgreSQL（Serverless）** | DATABASE_URL, 接続設定 |
+| データベース | RDS PostgreSQL | **Supabase PostgreSQL** | DATABASE_URL, 接続設定 |
 | ファイルストレージ | AWS S3 | **Cloudflare R2（S3互換）** | storage.yml, 環境変数 |
 | CDN/SSL | CloudFront + ACM | **Cloudflare DNS + Let's Encrypt** | DNS設定, certbot |
 | APIサーバー | ECS Fargate | **AWS Lightsail（Docker + Nginx）** | Dockerfile, docker-compose, Nginx |

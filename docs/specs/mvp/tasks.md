@@ -56,7 +56,7 @@
 - [x] 1.2.1 database.yml を設定
   - 開発: Docker PostgreSQL (DATABASE_URL)
   - テスト: 別DB (uketori_test)
-  - connect_timeout: 10（Neon対策）
+  - connect_timeout: 10（本番DB接続の安定化）
   - _Requirements: REQ-INFRA-002_
 
 - [x] 1.2.2 SolidQueue を設定

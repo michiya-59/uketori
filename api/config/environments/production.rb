@@ -68,7 +68,7 @@ Rails.application.configure do
   # --- メール送信: Resend (SMTP) を使う ---
   config.action_mailer.delivery_method = :smtp
   config.action_mailer.default_url_options = {
-    host: ENV.fetch("APP_HOST", "app.uketori.jp"),
+    host: ENV.fetch("APP_HOST", "app.invoiceflow.jp"),
     protocol: "https"
   }
   config.action_mailer.smtp_settings = {

@@ -172,8 +172,8 @@ AI搭載 受発注・請求・入金回収管理SaaS
 | サービス | 用途 | 月額 |
 |---------|------|------|
 | Vercel (Hobby→Pro) | Next.js ホスティング | ¥0〜$20 |
-| Fly.io (shared-cpu) | Rails API + SolidQueue | $3〜5 |
-| Neon PostgreSQL | データベース | ¥0 |
+| AWS Lightsail (Micro) | Rails API + SolidQueue | $7 |
+| Supabase PostgreSQL | データベース | ¥0 |
 | Cloudflare R2 | PDF・画像保存 | ¥0 |
 | Cloudflare | DNS + CDN + SSL | ¥0 |
 | SendGrid | メール送信 | ¥0 |
@@ -189,9 +189,9 @@ AI搭載 受発注・請求・入金回収管理SaaS
 | ユーザー数 | 構成変更 | 月額目安 |
 |-----------|---------|---------|
 | 0〜50 | 極限構成（現状） | ¥500〜3,000 |
-| 50〜200 | Neon Pro + Vercel Pro | ¥6,000〜10,000 |
-| 200〜500 | Fly.io 1GB RAM + Fly.io Postgres | ¥10,000〜15,000 |
-| 500〜1,000 | Fly.io 2台構成 + SolidQueue分離 | ¥15,000〜25,000 |
+| 50〜200 | Lightsail Small + Vercel Pro | ¥5,000〜7,000 |
+| 200〜500 | Lightsail Medium + Supabase Pro | ¥10,000〜15,000 |
+| 500〜1,000 | EC2 2台構成 + RDS + SolidQueue分離 | ¥20,000〜30,000 |
 | 1,000+ | AWS移行（ECS + RDS） | ¥30,000〜 |
 
 > PostgreSQL + S3互換APIでポータビリティを確保し、段階的にスケールアップ

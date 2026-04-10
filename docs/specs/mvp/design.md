@@ -10,7 +10,7 @@
 
 ウケトリは中小企業・フリーランス向けのAI搭載 受発注・請求・入金回収管理SaaS。
 フロントエンド（Next.js 15 App Router）とバックエンドAPI（Rails 7.2 APIモード）の分離アーキテクチャ。
-Docker Compose で開発環境を統一し、本番は Vercel + Fly.io + Neon + Cloudflare R2 の極限コスト構成。
+Docker Compose で開発環境を統一し、本番は Vercel + AWS Lightsail + Supabase + Cloudflare R2 の極限コスト構成。
 
 ### 差別化の核心
 1. **入金回収特化:** AI入金消込・自動督促・回収率ダッシュボード・与信スコアリング
@@ -32,7 +32,7 @@ Docker Compose で開発環境を統一し、本番は Vercel + Fly.io + Neon + 
 └──────────┬───────────────────────┬──────────────────────┘
            │                       │
 ┌──────────▼──────────┐ ┌─────────▼──────────────────────┐
-│ Vercel / Docker      │ │ Fly.io / Docker                 │
+│ Vercel / Docker      │ │ Lightsail / Docker              │
 │ (Next.js 15)         │ │ (Rails 7.2 API mode)            │
 │ - App Router (SSR)   │ │ - JWT Auth (devise-jwt)         │
 │ - Tailwind + shadcn  │ │ - Pundit (Authorization)        │
